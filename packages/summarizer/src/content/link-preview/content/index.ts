@@ -14,7 +14,6 @@ import {
   finalizeExtractedLinkContent,
   pickFirstText,
   resolveFirecrawlMode,
-  resolveMaxCharacters,
   resolveTimeoutMs,
   safeHostname,
   selectBaseContent,
@@ -59,7 +58,6 @@ export async function fetchLinkContent(
   options: FetchLinkContentOptions | undefined,
   deps: LinkPreviewDeps
 ): Promise<ExtractedLinkContent> {
-  const maxCharacters = resolveMaxCharacters(options)
   const timeoutMs = resolveTimeoutMs(options)
   const youtubeTranscriptMode = options?.youtubeTranscript ?? 'auto'
   const firecrawlMode = resolveFirecrawlMode(options)
@@ -94,7 +92,6 @@ export async function fetchLinkContent(
     const firecrawlResult = await buildResultFromFirecrawl({
       url,
       payload: firecrawlPayload,
-      maxCharacters,
       youtubeTranscriptMode,
       firecrawlDiagnostics,
       deps,
@@ -158,7 +155,6 @@ export async function fetchLinkContent(
   return buildResultFromHtmlDocument({
     url,
     html,
-    maxCharacters,
     youtubeTranscriptMode,
     firecrawlDiagnostics,
     deps,
@@ -168,14 +164,12 @@ export async function fetchLinkContent(
 async function buildResultFromFirecrawl({
   url,
   payload,
-  maxCharacters,
   youtubeTranscriptMode,
   firecrawlDiagnostics,
   deps,
 }: {
   url: string
   payload: FirecrawlScrapeResult
-  maxCharacters: number
   youtubeTranscriptMode: FetchLinkContentOptions['youtubeTranscript']
   firecrawlDiagnostics: FirecrawlDiagnostics
   deps: LinkPreviewDeps
@@ -217,7 +211,6 @@ async function buildResultFromFirecrawl({
   return finalizeExtractedLinkContent({
     url,
     baseContent,
-    maxCharacters,
     title,
     description,
     siteName,
@@ -233,14 +226,12 @@ async function buildResultFromFirecrawl({
 async function buildResultFromHtmlDocument({
   url,
   html,
-  maxCharacters,
   youtubeTranscriptMode,
   firecrawlDiagnostics,
   deps,
 }: {
   url: string
   html: string
-  maxCharacters: number
   youtubeTranscriptMode: FetchLinkContentOptions['youtubeTranscript']
   firecrawlDiagnostics: FirecrawlDiagnostics
   deps: LinkPreviewDeps
@@ -266,7 +257,6 @@ async function buildResultFromHtmlDocument({
   return finalizeExtractedLinkContent({
     url,
     baseContent,
-    maxCharacters,
     title,
     description,
     siteName,
@@ -279,8 +269,4 @@ async function buildResultFromHtmlDocument({
   })
 }
 
-export {
-  DEFAULT_MAX_CONTENT_CHARACTERS,
-  type ExtractedLinkContent,
-  type FetchLinkContentOptions,
-} from './types.js'
+export type { ExtractedLinkContent, FetchLinkContentOptions } from './types.js'

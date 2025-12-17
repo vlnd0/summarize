@@ -30,9 +30,17 @@ type JsonOutput = {
   }
   extracted: unknown
   prompt: string
-  openai: { model: string; maxCompletionTokens: number } | null
+  openai: {
+    model: string
+    maxCompletionTokens: number
+    strategy: 'single' | 'map-reduce'
+    chunkCount: number
+  } | null
   summary: string | null
 }
+
+const MAP_REDUCE_TRIGGER_CHARACTERS = 120_000
+const MAP_REDUCE_CHUNK_CHARACTERS = 60_000
 
 function buildProgram() {
   return new Command()
@@ -143,6 +151,55 @@ function readFirstChoiceContent(payload: unknown): string | null {
   return typeof content === 'string' ? content : null
 }
 
+function splitTextIntoChunks(input: string, maxCharacters: number): string[] {
+  if (maxCharacters <= 0) {
+    return [input]
+  }
+
+  const text = input.trim()
+  if (text.length <= maxCharacters) {
+    return [text]
+  }
+
+  const chunks: string[] = []
+  let offset = 0
+  while (offset < text.length) {
+    const end = Math.min(offset + maxCharacters, text.length)
+    const slice = text.slice(offset, end)
+
+    if (end === text.length) {
+      chunks.push(slice.trim())
+      break
+    }
+
+    const candidateBreaks = [
+      slice.lastIndexOf('\n\n'),
+      slice.lastIndexOf('\n'),
+      slice.lastIndexOf('. '),
+    ]
+    const lastBreak = Math.max(...candidateBreaks)
+    const splitAt = lastBreak > Math.floor(maxCharacters * 0.5) ? lastBreak + 1 : slice.length
+    const chunk = slice.slice(0, splitAt).trim()
+    if (chunk.length > 0) {
+      chunks.push(chunk)
+    }
+
+    offset += splitAt
+  }
+
+  return chunks.filter((chunk) => chunk.length > 0)
+}
+
+function buildChunkNotesPrompt({ content }: { content: string }): string {
+  return `Return 10 bullet points summarizing the content below (Markdown).
+
+CONTENT:
+"""
+${content}
+"""
+`
+}
+
 export async function runCli(
   argv: string[],
   { env, fetch, stdout, stderr }: RunEnv
@@ -209,7 +266,7 @@ export async function runCli(
     siteName: extracted.siteName,
     description: extracted.description,
     content: extracted.content,
-    truncated: extracted.truncated,
+    truncated: false,
     hasTranscript:
       isYouTube ||
       (extracted.transcriptSource !== null && extracted.transcriptSource !== 'unavailable'),
@@ -289,14 +346,75 @@ export async function runCli(
       ? SUMMARY_LENGTH_TO_TOKENS[lengthArg.preset]
       : estimateMaxCompletionTokensForCharacters(lengthArg.maxCharacters)
 
-  let summary = await summarizeWithOpenAI({
-    apiKey,
-    model,
-    prompt,
-    maxOutputTokens: maxCompletionTokens,
-    timeoutMs,
-    fetchImpl: fetch,
-  })
+  const isLargeContent = extracted.content.length >= MAP_REDUCE_TRIGGER_CHARACTERS
+  let strategy: 'single' | 'map-reduce' = 'single'
+  let chunkCount = 1
+
+  let summary: string
+  if (!isLargeContent) {
+    summary = await summarizeWithOpenAI({
+      apiKey,
+      model,
+      prompt,
+      maxOutputTokens: maxCompletionTokens,
+      timeoutMs,
+      fetchImpl: fetch,
+    })
+  } else {
+    strategy = 'map-reduce'
+    const chunks = splitTextIntoChunks(extracted.content, MAP_REDUCE_CHUNK_CHARACTERS)
+    chunkCount = chunks.length
+
+    stderr.write(
+      `Large input (${extracted.content.length} chars); summarizing in ${chunks.length} chunks.\n`
+    )
+
+    const chunkNotes: string[] = []
+    for (let i = 0; i < chunks.length; i += 1) {
+      const chunkPrompt = buildChunkNotesPrompt({
+        content: chunks[i] ?? '',
+      })
+
+      const notes = await summarizeWithOpenAI({
+        apiKey,
+        model,
+        prompt: chunkPrompt,
+        maxOutputTokens: SUMMARY_LENGTH_TO_TOKENS.medium,
+        timeoutMs,
+        fetchImpl: fetch,
+      })
+
+      chunkNotes.push(notes.trim())
+    }
+
+    const mergedContent = `Chunk notes (generated from the full input):\n\n${chunkNotes
+      .filter((value) => value.length > 0)
+      .join('\n\n')}`
+
+    const mergedPrompt = buildLinkSummaryPrompt({
+      url: extracted.url,
+      title: extracted.title,
+      siteName: extracted.siteName,
+      description: extracted.description,
+      content: mergedContent,
+      truncated: false,
+      hasTranscript:
+        isYouTube ||
+        (extracted.transcriptSource !== null && extracted.transcriptSource !== 'unavailable'),
+      summaryLength:
+        lengthArg.kind === 'preset' ? lengthArg.preset : { maxCharacters: lengthArg.maxCharacters },
+      shares: [],
+    })
+
+    summary = await summarizeWithOpenAI({
+      apiKey,
+      model,
+      prompt: mergedPrompt,
+      maxOutputTokens: maxCompletionTokens,
+      timeoutMs,
+      fetchImpl: fetch,
+    })
+  }
 
   summary = summary.trim()
 
@@ -319,7 +437,7 @@ export async function runCli(
       },
       extracted,
       prompt,
-      openai: { model, maxCompletionTokens },
+      openai: { model, maxCompletionTokens, strategy, chunkCount },
       summary,
     }
 

@@ -107,7 +107,7 @@ Used only as a fallback for non-YouTube URLs when direct HTML fetching/extractio
 
 - `@steipete/summarizer/content`
   - `createLinkPreviewClient({ fetch?, scrapeWithFirecrawl?, apifyApiToken? })`
-  - `client.fetchLinkContent(url, { timeoutMs?, maxCharacters?, youtubeTranscript? })`
+  - `client.fetchLinkContent(url, { timeoutMs?, youtubeTranscript?, firecrawl? })`
 - `@steipete/summarizer/prompts`
   - `buildLinkSummaryPrompt(...)` (`summaryLength` supports presets or `{ maxCharacters }`)
   - `SUMMARY_LENGTH_TO_TOKENS`

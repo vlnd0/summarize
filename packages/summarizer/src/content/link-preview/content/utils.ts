@@ -1,7 +1,6 @@
 import type { TranscriptDiagnostics } from '../types.js'
-import { applyContentBudget, normalizeCandidate, normalizeForPrompt } from './cleaner.js'
+import { normalizeCandidate, normalizeForPrompt } from './cleaner.js'
 import {
-  DEFAULT_MAX_CONTENT_CHARACTERS,
   DEFAULT_TIMEOUT_MS,
   type ExtractedLinkContent,
   type FetchLinkContentOptions,
@@ -12,17 +11,7 @@ import {
 
 const WWW_PREFIX_PATTERN = /^www\./i
 const TRANSCRIPT_LINE_SPLIT_PATTERN = /\r?\n/
-
-export function resolveMaxCharacters(options?: FetchLinkContentOptions): number {
-  const candidate = options?.maxCharacters
-  if (typeof candidate !== 'number' || !Number.isFinite(candidate)) {
-    return DEFAULT_MAX_CONTENT_CHARACTERS
-  }
-  if (candidate <= DEFAULT_MAX_CONTENT_CHARACTERS) {
-    return DEFAULT_MAX_CONTENT_CHARACTERS
-  }
-  return Math.floor(candidate)
-}
+const WORD_SPLIT_PATTERN = /\s+/g
 
 export function resolveTimeoutMs(options?: FetchLinkContentOptions): number {
   const candidate = options?.timeoutMs
@@ -109,17 +98,21 @@ export function ensureTranscriptDiagnostics(
 export function finalizeExtractedLinkContent({
   url,
   baseContent,
-  maxCharacters,
   title,
   description,
   siteName,
   transcriptResolution,
   diagnostics,
 }: FinalizationArguments): ExtractedLinkContent {
-  const { content, truncated, totalCharacters, wordCount } = applyContentBudget(
-    baseContent,
-    maxCharacters
-  )
+  const content = normalizeForPrompt(baseContent)
+  const totalCharacters = content.length
+  const wordCount =
+    content.length > 0
+      ? content
+          .split(WORD_SPLIT_PATTERN)
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0).length
+      : 0
   const { transcriptCharacters, transcriptLines } = summarizeTranscript(transcriptResolution.text)
 
   return {
@@ -128,7 +121,6 @@ export function finalizeExtractedLinkContent({
     description,
     siteName,
     content,
-    truncated,
     totalCharacters,
     wordCount,
     transcriptCharacters,

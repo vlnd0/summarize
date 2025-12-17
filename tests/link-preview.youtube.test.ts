@@ -70,7 +70,6 @@ describe('link preview extraction (YouTube)', () => {
     const result = await client.fetchLinkContent('https://www.youtube.com/watch?v=abcdefghijk')
 
     expect(result.content).toBe('Transcript:\nHello & welcome\nTranscript line 2')
-    expect(result.truncated).toBe(false)
     expect(result.totalCharacters).toBe(result.content.length)
     expect(result.wordCount).toBe(7)
     expect(result.transcriptSource).toBe('youtubei')
@@ -100,6 +99,50 @@ describe('link preview extraction (YouTube)', () => {
     expect(result.content).toBe('Only HTML content')
     expect(result.transcriptCharacters).toBeNull()
     expect(result.transcriptSource).toBe('unavailable')
+  })
+
+  it('falls back to Android player captionTracks when bootstrap config is missing', async () => {
+    const html =
+      '<!doctype html><html><head><title>Sample</title>' +
+      '<script>window.__data = {"INNERTUBE_API_KEY":"TEST_KEY"}</script>' +
+      '</head><body><article><p>Only HTML content</p></article></body></html>'
+
+    const fetchMock = vi.fn<[RequestInfo | URL, RequestInit?], Promise<Response>>((input) => {
+      const url = typeof input === 'string' ? input : (input?.url ?? '')
+      if (url.includes('youtubei/v1/player')) {
+        return Promise.resolve(
+          jsonResponse({
+            captions: {
+              playerCaptionsTracklistRenderer: {
+                captionTracks: [{ baseUrl: 'https://example.com/captions', languageCode: 'en' }],
+              },
+            },
+          })
+        )
+      }
+      if (url.startsWith('https://example.com/captions')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              events: [{ segs: [{ utf8: 'Hello from captions' }] }],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          )
+        )
+      }
+      if (url.includes('youtube.com/watch') || url.includes('youtu.be/')) {
+        return Promise.resolve(htmlResponse(html))
+      }
+      return Promise.reject(new Error(`Unexpected fetch call: ${String(url)}`))
+    })
+
+    const client = createLinkPreviewClient({ fetch: fetchMock as unknown as typeof fetch })
+    const result = await client.fetchLinkContent('https://www.youtube.com/watch?v=abcdefghijk', {
+      youtubeTranscript: 'web',
+    })
+
+    expect(result.content).toBe('Transcript:\nHello from captions')
+    expect(result.transcriptSource).toBe('captionTracks')
   })
 
   it('uses ytInitialPlayerResponse shortDescription when transcripts are unavailable', async () => {

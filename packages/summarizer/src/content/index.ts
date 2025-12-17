@@ -4,7 +4,6 @@ export {
   type LinkPreviewClientOptions,
 } from './link-preview/client.js'
 export {
-  DEFAULT_MAX_CONTENT_CHARACTERS,
   DEFAULT_TIMEOUT_MS,
   type ExtractedLinkContent,
   type FetchLinkContentOptions,

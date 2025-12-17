@@ -15,6 +15,7 @@ const REQUEST_HEADERS: Record<string, string> = {
 }
 
 const YT_INITIAL_PLAYER_RESPONSE_TOKEN = 'ytInitialPlayerResponse'
+const INNERTUBE_API_KEY_REGEX = /"INNERTUBE_API_KEY":"([^"]+)"|INNERTUBE_API_KEY\\":\\"([^\\"]+)\\"/
 
 function extractBalancedJsonObject(source: string, startAt: number): string | null {
   const start = source.indexOf('{', startAt)
@@ -95,6 +96,12 @@ function extractInitialPlayerResponse(html: string): Record<string, unknown> | n
 const isObjectLike = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
 
+function extractInnertubeApiKey(html: string): string | null {
+  const match = html.match(INNERTUBE_API_KEY_REGEX)
+  const key = match?.[1] ?? match?.[2] ?? null
+  return typeof key === 'string' && key.trim().length > 0 ? key.trim() : null
+}
+
 type YoutubePlayerContext = Record<string, unknown> & { client?: unknown }
 type CaptionsPayload = Record<string, unknown> & {
   captions?: unknown
@@ -108,9 +115,62 @@ type CaptionTrackRecord = Record<string, unknown> & {
   languageCode?: unknown
   kind?: unknown
   baseUrl?: unknown
+  url?: unknown
 }
 type CaptionEventRecord = Record<string, unknown> & { segs?: unknown }
 type CaptionSegmentRecord = Record<string, unknown> & { utf8?: unknown }
+
+async function fetchTranscriptViaAndroidPlayer(
+  fetchImpl: typeof fetch,
+  { html, videoId }: { html: string; videoId: string }
+): Promise<string | null> {
+  const apiKey = extractInnertubeApiKey(html)
+  if (!apiKey) {
+    return null
+  }
+
+  try {
+    const userAgent =
+      REQUEST_HEADERS['User-Agent'] ??
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
+
+    const response = await fetchWithTimeout(
+      fetchImpl,
+      `https://www.youtube.com/youtubei/v1/player?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': userAgent,
+          'Accept-Language': REQUEST_HEADERS['Accept-Language'] ?? 'en-US,en;q=0.9',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          context: {
+            client: {
+              clientName: 'ANDROID',
+              clientVersion: '20.10.38',
+            },
+          },
+          videoId,
+        }),
+      }
+    )
+
+    if (!response.ok) {
+      return null
+    }
+
+    const parsed: unknown = await response.json()
+    if (!isObjectLike(parsed)) {
+      return null
+    }
+
+    return await extractTranscriptFromPlayerPayload(fetchImpl, parsed)
+  } catch {
+    return null
+  }
+}
 
 export const fetchTranscriptFromCaptionTracks = async (
   fetchImpl: typeof fetch,
@@ -126,13 +186,13 @@ export const fetchTranscriptFromCaptionTracks = async (
 
   const bootstrap = extractYoutubeiBootstrap(html)
   if (!bootstrap) {
-    return null
+    return await fetchTranscriptViaAndroidPlayer(fetchImpl, { html, videoId })
   }
 
   const { apiKey, clientName, clientVersion, context, pageCl, pageLabel, visitorData, xsrfToken } =
     bootstrap
   if (!apiKey) {
-    return null
+    return await fetchTranscriptViaAndroidPlayer(fetchImpl, { html, videoId })
   }
 
   const contextRecord = context as YoutubePlayerContext
@@ -212,7 +272,7 @@ export const fetchTranscriptFromCaptionTracks = async (
     }
     return await extractTranscriptFromPlayerPayload(fetchImpl, parsed)
   } catch {
-    return null
+    return await fetchTranscriptViaAndroidPlayer(fetchImpl, { html, videoId })
   }
 }
 
@@ -312,12 +372,17 @@ const downloadCaptionTrack = async (
   track: Record<string, unknown>
 ): Promise<string | null> => {
   const trackRecord = track as CaptionTrackRecord
-  const baseUrl = typeof trackRecord.baseUrl === 'string' ? trackRecord.baseUrl : null
+  const baseUrl =
+    typeof trackRecord.baseUrl === 'string'
+      ? trackRecord.baseUrl
+      : typeof trackRecord.url === 'string'
+        ? trackRecord.url
+        : null
   if (!baseUrl) {
     return null
   }
 
-  const transcriptUrl = (() => {
+  const json3Url = (() => {
     try {
       const parsed = new URL(baseUrl)
       parsed.searchParams.set('fmt', 'json3')
@@ -330,13 +395,38 @@ const downloadCaptionTrack = async (
   })()
 
   try {
-    const response = await fetchWithTimeout(fetchImpl, transcriptUrl, {
+    const response = await fetchWithTimeout(fetchImpl, json3Url, {
       headers: REQUEST_HEADERS,
     })
     if (!response.ok) {
-      return null
+      return await downloadXmlTranscript(fetchImpl, baseUrl)
     }
 
+    const text = await response.text()
+    const jsonResult = parseJsonTranscript(text)
+    if (jsonResult) {
+      return jsonResult
+    }
+    const xmlFallback = parseXmlTranscript(text)
+    if (xmlFallback) {
+      return xmlFallback
+    }
+    return await downloadXmlTranscript(fetchImpl, baseUrl)
+  } catch {
+    return await downloadXmlTranscript(fetchImpl, baseUrl)
+  }
+}
+
+const downloadXmlTranscript = async (
+  fetchImpl: typeof fetch,
+  baseUrl: string
+): Promise<string | null> => {
+  const xmlUrl = baseUrl.replaceAll(/&fmt=[^&]+/g, '')
+  try {
+    const response = await fetchWithTimeout(fetchImpl, xmlUrl, { headers: REQUEST_HEADERS })
+    if (!response.ok) {
+      return null
+    }
     const text = await response.text()
     const jsonResult = parseJsonTranscript(text)
     if (jsonResult) {

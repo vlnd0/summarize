@@ -1,12 +1,10 @@
 import type { ContentFetchDiagnostics, TranscriptDiagnostics, TranscriptSource } from '../types.js'
 
-export const DEFAULT_MAX_CONTENT_CHARACTERS = 8000
 export const DEFAULT_TIMEOUT_MS = 5000
 export type YoutubeTranscriptMode = 'auto' | 'web' | 'apify'
 export type FirecrawlMode = 'off' | 'auto' | 'always'
 
 export interface FetchLinkContentOptions {
-  maxCharacters?: number
   timeoutMs?: number
   youtubeTranscript?: YoutubeTranscriptMode
   firecrawl?: FirecrawlMode
@@ -24,7 +22,6 @@ export interface ExtractedLinkContent {
   description: string | null
   siteName: string | null
   content: string
-  truncated: boolean
   totalCharacters: number
   wordCount: number
   transcriptCharacters: number | null
@@ -36,7 +33,6 @@ export interface ExtractedLinkContent {
 export interface FinalizationArguments {
   url: string
   baseContent: string
-  maxCharacters: number
   title: string | null
   description: string | null
   siteName: string | null
