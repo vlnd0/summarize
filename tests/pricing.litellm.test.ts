@@ -3,7 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
-import { loadLiteLlmCatalog, resolveLiteLlmPricingForModelId } from '../src/pricing/litellm.js'
+import {
+  loadLiteLlmCatalog,
+  resolveLiteLlmMaxOutputTokensForModelId,
+  resolveLiteLlmPricingForModelId,
+} from '../src/pricing/litellm.js'
 
 describe('LiteLLM pricing catalog', () => {
   it('resolves pricing for common gateway-style ids', () => {
@@ -54,6 +58,20 @@ describe('LiteLLM pricing catalog', () => {
       'gpt-5.2': { input_cost_per_token: 0.1 },
     }
     expect(resolveLiteLlmPricingForModelId(catalog, 'openai/gpt-5.2')).toBeNull()
+  })
+
+  it('resolves max output tokens for gateway-style ids', () => {
+    const catalog = {
+      'gpt-5.2': { max_output_tokens: 16384 },
+      'claude-opus-4-5': { max_tokens: 8192 },
+      'gemini-3-flash-preview': { max_output_tokens: '32768' },
+      'grok-4-fast-non-reasoning': { max_output_tokens: 4096 },
+    }
+
+    expect(resolveLiteLlmMaxOutputTokensForModelId(catalog, 'openai/gpt-5.2')).toBe(16384)
+    expect(resolveLiteLlmMaxOutputTokensForModelId(catalog, 'anthropic/claude-opus-4-5')).toBe(8192)
+    expect(resolveLiteLlmMaxOutputTokensForModelId(catalog, 'google/gemini-3-flash-preview')).toBe(32768)
+    expect(resolveLiteLlmMaxOutputTokensForModelId(catalog, 'xai/grok-4-fast-non-reasoning')).toBe(4096)
   })
 
   it('does nothing without HOME (no cache, no network)', async () => {

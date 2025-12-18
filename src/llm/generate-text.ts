@@ -55,7 +55,7 @@ export async function generateTextWithModelId({
   apiKeys: LlmApiKeys
   system?: string
   prompt: string | ModelMessage[]
-  maxOutputTokens: number
+  maxOutputTokens?: number
   timeoutMs: number
   temperature: number
   fetchImpl: typeof fetch
@@ -83,7 +83,7 @@ export async function generateTextWithModelId({
         system,
         ...(typeof prompt === 'string' ? { prompt } : { messages: prompt }),
         temperature,
-        maxOutputTokens,
+        ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
         abortSignal: controller.signal,
       })
       return {
@@ -104,7 +104,7 @@ export async function generateTextWithModelId({
         system,
         ...(typeof prompt === 'string' ? { prompt } : { messages: prompt }),
         temperature,
-        maxOutputTokens,
+        ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
         abortSignal: controller.signal,
       })
       return {
@@ -125,7 +125,7 @@ export async function generateTextWithModelId({
         system,
         ...(typeof prompt === 'string' ? { prompt } : { messages: prompt }),
         temperature,
-        maxOutputTokens,
+        ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
         abortSignal: controller.signal,
       })
       return {
@@ -145,7 +145,7 @@ export async function generateTextWithModelId({
       system,
       ...(typeof prompt === 'string' ? { prompt } : { messages: prompt }),
       temperature,
-      maxOutputTokens,
+      ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
       abortSignal: controller.signal,
     })
     return {
@@ -178,7 +178,7 @@ export async function streamTextWithModelId({
   apiKeys: LlmApiKeys
   system?: string
   prompt: string | ModelMessage[]
-  maxOutputTokens: number
+  maxOutputTokens?: number
   timeoutMs: number
   temperature: number
   fetchImpl: typeof fetch
@@ -206,7 +206,7 @@ export async function streamTextWithModelId({
         system,
         ...(typeof prompt === 'string' ? { prompt } : { messages: prompt }),
         temperature,
-        maxOutputTokens,
+        ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
         abortSignal: controller.signal,
       })
       return {
@@ -227,7 +227,7 @@ export async function streamTextWithModelId({
         system,
         ...(typeof prompt === 'string' ? { prompt } : { messages: prompt }),
         temperature,
-        maxOutputTokens,
+        ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
         abortSignal: controller.signal,
       })
       return {
@@ -248,7 +248,7 @@ export async function streamTextWithModelId({
         system,
         ...(typeof prompt === 'string' ? { prompt } : { messages: prompt }),
         temperature,
-        maxOutputTokens,
+        ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
         abortSignal: controller.signal,
       })
       return {
@@ -263,14 +263,14 @@ export async function streamTextWithModelId({
     if (!apiKey) throw new Error('Missing OPENAI_API_KEY for openai/... model')
     const { createOpenAI } = await import('@ai-sdk/openai')
     const openai = createOpenAI({ apiKey, fetch: fetchImpl })
-    const result = streamText({
-      model: openai(parsed.model),
-      system,
-      ...(typeof prompt === 'string' ? { prompt } : { messages: prompt }),
-      temperature,
-      maxOutputTokens,
-      abortSignal: controller.signal,
-    })
+	    const result = streamText({
+	      model: openai(parsed.model),
+	      system,
+	      ...(typeof prompt === 'string' ? { prompt } : { messages: prompt }),
+	      temperature,
+	      ...(typeof maxOutputTokens === 'number' ? { maxOutputTokens } : {}),
+	      abortSignal: controller.signal,
+	    })
     return {
       textStream: result.textStream,
       canonicalModelId: parsed.canonical,

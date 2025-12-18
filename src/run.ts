@@ -27,7 +27,11 @@ import { generateTextWithModelId, streamTextWithModelId } from './llm/generate-t
 import { createHtmlToMarkdownConverter } from './llm/html-to-markdown.js'
 import { normalizeGatewayStyleModelId, parseGatewayStyleModelId } from './llm/model-id.js'
 import { resolveGoogleModelForUsage } from './llm/google-models.js'
-import { loadLiteLlmCatalog, resolveLiteLlmPricingForModelId } from './pricing/litellm.js'
+import {
+  loadLiteLlmCatalog,
+  resolveLiteLlmMaxOutputTokensForModelId,
+  resolveLiteLlmPricingForModelId,
+} from './pricing/litellm.js'
 import {
   buildFileSummaryPrompt,
   buildLinkSummaryPrompt,
@@ -615,6 +619,22 @@ export async function runCli(
     const result = await liteLlmCatalogPromise
     return result.catalog
   }
+
+  const capMaxOutputTokensForModel = async ({
+    modelId,
+    requested,
+  }: {
+    modelId: string
+    requested: number
+  }): Promise<number> => {
+    const catalog = await getLiteLlmCatalog()
+    if (!catalog) return requested
+    const limit = resolveLiteLlmMaxOutputTokensForModelId(catalog, modelId)
+    if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) {
+      return Math.min(requested, limit)
+    }
+    return requested
+  }
   const buildReport = async () => {
     const catalog = await getLiteLlmCatalog()
     return buildRunCostReport({
@@ -769,11 +789,15 @@ export async function runCli(
         ? lengthArg.preset
         : { maxCharacters: lengthArg.maxCharacters }
 
-    const { prompt: promptText, maxOutputTokens } = buildFileSummaryPrompt({
-      filename: attachment.filename,
-      mediaType: attachment.mediaType,
-      summaryLength: summaryLengthTarget,
-    })
+	    const { prompt: promptText, maxOutputTokens } = buildFileSummaryPrompt({
+	      filename: attachment.filename,
+	      mediaType: attachment.mediaType,
+	      summaryLength: summaryLengthTarget,
+	    })
+	    const maxOutputTokensCapped = await capMaxOutputTokensForModel({
+	      modelId: parsedModelEffective.canonical,
+	      requested: maxOutputTokens,
+	    })
 
     const messages = buildAssetPromptMessages({ promptText, attachment })
 
@@ -790,15 +814,15 @@ export async function runCli(
 		    if (streamingEnabledForCall) {
 	      let streamResult: Awaited<ReturnType<typeof streamTextWithModelId>>
 	      try {
-	        streamResult = await streamTextWithModelId({
-	          modelId: parsedModelEffective.canonical,
-	          apiKeys: apiKeysForLlm,
-          prompt: messages,
-          temperature: 0,
-          maxOutputTokens,
-          timeoutMs,
-          fetchImpl: trackedFetch,
-        })
+		        streamResult = await streamTextWithModelId({
+		          modelId: parsedModelEffective.canonical,
+		          apiKeys: apiKeysForLlm,
+	          prompt: messages,
+	          temperature: 0,
+	          maxOutputTokens: maxOutputTokensCapped,
+	          timeoutMs,
+	          fetchImpl: trackedFetch,
+	        })
       } catch (error) {
         if (isUnsupportedAttachmentError(error)) {
           throw new Error(
@@ -891,7 +915,7 @@ export async function runCli(
 	        result = await summarizeWithModelId({
 	          modelId: parsedModelEffective.canonical,
 	          prompt: messages,
-	          maxOutputTokens,
+	          maxOutputTokens: maxOutputTokensCapped,
 	          timeoutMs,
 	          fetchImpl: trackedFetch,
 	          apiKeys: apiKeysForLlm,
@@ -1427,23 +1451,27 @@ export async function runCli(
   if (modelResolution.note && verbose) {
     writeVerbose(stderr, verbose, modelResolution.note, verboseColor)
   }
-  const parsedModelEffective = parseGatewayStyleModelId(modelResolution.modelId)
-  const streamingEnabledForCall = streamingEnabled && !modelResolution.forceStreamOff
+	  const parsedModelEffective = parseGatewayStyleModelId(modelResolution.modelId)
+	  const streamingEnabledForCall = streamingEnabled && !modelResolution.forceStreamOff
 
-  writeVerbose(
+	  writeVerbose(
     stderr,
     verbose,
     `mode summarize provider=${parsedModelEffective.provider} model=${parsedModelEffective.canonical}`,
     verboseColor
   )
-  const maxCompletionTokens =
-    lengthArg.kind === 'preset'
-      ? SUMMARY_LENGTH_TO_TOKENS[lengthArg.preset]
-      : estimateMaxCompletionTokensForCharacters(lengthArg.maxCharacters)
+	  const maxCompletionTokens =
+	    lengthArg.kind === 'preset'
+	      ? SUMMARY_LENGTH_TO_TOKENS[lengthArg.preset]
+	      : estimateMaxCompletionTokensForCharacters(lengthArg.maxCharacters)
+	  const maxOutputTokensForCall = await capMaxOutputTokensForModel({
+	    modelId: parsedModelEffective.canonical,
+	    requested: maxCompletionTokens,
+	  })
 
-  const isLargeContent = extracted.content.length >= MAP_REDUCE_TRIGGER_CHARACTERS
-  let strategy: 'single' | 'map-reduce' = 'single'
-  let chunkCount = 1
+	  const isLargeContent = extracted.content.length >= MAP_REDUCE_TRIGGER_CHARACTERS
+	  let strategy: 'single' | 'map-reduce' = 'single'
+	  let chunkCount = 1
   const shouldBufferSummaryForRender =
     streamingEnabledForCall && effectiveRenderMode === 'md' && isRichTty(stdout)
   const shouldLiveRenderSummary =
@@ -1462,15 +1490,15 @@ export async function runCli(
         `summarize stream=on buffered=${shouldBufferSummaryForRender}`,
         verboseColor
       )
-      const streamResult = await streamTextWithModelId({
-        modelId: parsedModelEffective.canonical,
-        apiKeys: apiKeysForLlm,
-        prompt,
-        temperature: 0,
-        maxOutputTokens: maxCompletionTokens,
-        timeoutMs,
-        fetchImpl: trackedFetch,
-      })
+	      const streamResult = await streamTextWithModelId({
+	        modelId: parsedModelEffective.canonical,
+	        apiKeys: apiKeysForLlm,
+	        prompt,
+	        temperature: 0,
+	        maxOutputTokens: maxOutputTokensForCall,
+	        timeoutMs,
+	        fetchImpl: trackedFetch,
+	      })
 	      let streamed = ''
 	      const liveRenderer = shouldLiveRenderSummary
 	        ? createLiveRenderer({
@@ -1536,14 +1564,14 @@ export async function runCli(
         summaryAlreadyPrinted = true
       }
     } else {
-      const result = await summarizeWithModelId({
-        modelId: parsedModelEffective.canonical,
-        prompt,
-        maxOutputTokens: maxCompletionTokens,
-        timeoutMs,
-        fetchImpl: trackedFetch,
-        apiKeys: apiKeysForLlm,
-      })
+	      const result = await summarizeWithModelId({
+	        modelId: parsedModelEffective.canonical,
+	        prompt,
+	        maxOutputTokens: maxOutputTokensForCall,
+	        timeoutMs,
+	        fetchImpl: trackedFetch,
+	        apiKeys: apiKeysForLlm,
+	      })
       llmCalls.push({
         provider: result.provider,
         model: result.canonicalModelId,
@@ -1567,8 +1595,8 @@ export async function runCli(
       verboseColor
     )
 
-    const chunkNotes: string[] = []
-    for (let i = 0; i < chunks.length; i += 1) {
+	    const chunkNotes: string[] = []
+	    for (let i = 0; i < chunks.length; i += 1) {
       writeVerbose(
         stderr,
         verbose,
@@ -1579,14 +1607,18 @@ export async function runCli(
         content: chunks[i] ?? '',
       })
 
-      const notesResult = await summarizeWithModelId({
-        modelId: parsedModelEffective.canonical,
-        prompt: chunkPrompt,
-        maxOutputTokens: SUMMARY_LENGTH_TO_TOKENS.medium,
-        timeoutMs,
-        fetchImpl: trackedFetch,
-        apiKeys: apiKeysForLlm,
-      })
+	      const chunkNoteTokens = await capMaxOutputTokensForModel({
+	        modelId: parsedModelEffective.canonical,
+	        requested: SUMMARY_LENGTH_TO_TOKENS.medium,
+	      })
+	      const notesResult = await summarizeWithModelId({
+	        modelId: parsedModelEffective.canonical,
+	        prompt: chunkPrompt,
+	        maxOutputTokens: chunkNoteTokens,
+	        timeoutMs,
+	        fetchImpl: trackedFetch,
+	        apiKeys: apiKeysForLlm,
+	      })
       const notes = notesResult.text
 
       llmCalls.push({
@@ -1626,15 +1658,15 @@ export async function runCli(
         `summarize stream=on buffered=${shouldBufferSummaryForRender}`,
         verboseColor
       )
-      const streamResult = await streamTextWithModelId({
-        modelId: parsedModelEffective.canonical,
-        apiKeys: apiKeysForLlm,
-        prompt: mergedPrompt,
-        temperature: 0,
-        maxOutputTokens: maxCompletionTokens,
-        timeoutMs,
-        fetchImpl: trackedFetch,
-      })
+	      const streamResult = await streamTextWithModelId({
+	        modelId: parsedModelEffective.canonical,
+	        apiKeys: apiKeysForLlm,
+	        prompt: mergedPrompt,
+	        temperature: 0,
+	        maxOutputTokens: maxOutputTokensForCall,
+	        timeoutMs,
+	        fetchImpl: trackedFetch,
+	      })
 	      let streamed = ''
 	      const liveRenderer = shouldLiveRenderSummary
 	        ? createLiveRenderer({
@@ -1700,14 +1732,14 @@ export async function runCli(
         summaryAlreadyPrinted = true
       }
     } else {
-      const mergedResult = await summarizeWithModelId({
-        modelId: parsedModelEffective.canonical,
-        prompt: mergedPrompt,
-        maxOutputTokens: maxCompletionTokens,
-        timeoutMs,
-        fetchImpl: trackedFetch,
-        apiKeys: apiKeysForLlm,
-      })
+	      const mergedResult = await summarizeWithModelId({
+	        modelId: parsedModelEffective.canonical,
+	        prompt: mergedPrompt,
+	        maxOutputTokens: maxOutputTokensForCall,
+	        timeoutMs,
+	        fetchImpl: trackedFetch,
+	        apiKeys: apiKeysForLlm,
+	      })
       llmCalls.push({
         provider: mergedResult.provider,
         model: mergedResult.canonicalModelId,

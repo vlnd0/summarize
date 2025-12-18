@@ -10,6 +10,9 @@ const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 type LiteLlmModelRow = {
   input_cost_per_token?: number
   output_cost_per_token?: number
+  max_output_tokens?: number | string
+  max_tokens?: number | string
+  max_input_tokens?: number | string
   // keep parsing minimal; file contains many additional fields
 }
 
@@ -159,6 +162,48 @@ export function resolveLiteLlmPricingForModelId(
     ) {
       return { inputUsdPerToken: input, outputUsdPerToken: output }
     }
+  }
+
+  return null
+}
+
+function toFinitePositiveInt(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const int = Math.floor(value)
+    return int > 0 ? int : null
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) {
+      const int = Math.floor(parsed)
+      return int > 0 ? int : null
+    }
+  }
+  return null
+}
+
+export function resolveLiteLlmMaxOutputTokensForModelId(
+  catalog: LiteLlmCatalog,
+  modelId: string
+): number | null {
+  const candidates: string[] = []
+  const normalized = modelId.trim()
+  if (normalized.length === 0) return null
+
+  candidates.push(normalized)
+  if (normalized.startsWith('openai/')) candidates.push(normalized.slice('openai/'.length))
+  if (normalized.startsWith('google/')) candidates.push(normalized.slice('google/'.length))
+  if (normalized.startsWith('anthropic/')) candidates.push(normalized.slice('anthropic/'.length))
+  if (normalized.startsWith('xai/')) candidates.push(normalized.slice('xai/'.length))
+
+  for (const key of candidates) {
+    const row = catalog[key]
+    const maxOutput = toFinitePositiveInt(row?.max_output_tokens)
+    if (maxOutput) return maxOutput
+
+    // Fallback: LiteLLM still has legacy `max_tokens` in many rows.
+    const maxTokens = toFinitePositiveInt(row?.max_tokens)
+    if (maxTokens) return maxTokens
   }
 
   return null

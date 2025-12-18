@@ -52,7 +52,7 @@ export function pickSummaryLengthForCharacters(maxCharacters: number): SummaryLe
 
 export function estimateMaxCompletionTokensForCharacters(maxCharacters: number): number {
   const estimate = Math.ceil(maxCharacters / 4)
-  return Math.min(12288, Math.max(256, estimate))
+  return Math.max(256, estimate)
 }
 
 const resolveSummaryDirective = (
