@@ -92,6 +92,11 @@ function buildProgram() {
       'Optional config file path (JSON). Default: ~/.config/summarize/config.json'
     )
     .option(
+      '--apify-youtube-actor <actor>',
+      'Apify actor for YouTube transcript fallback (e.g. topaz_sharingan~youtube-transcript-scraper).',
+      undefined
+    )
+    .option(
       '--model <model>',
       'LLM model id (gateway-style): xai/..., openai/..., google/... (default: xai/grok-4-fast-non-reasoning)',
       undefined
@@ -158,6 +163,7 @@ ${heading('Env Vars')}
   SUMMARIZE_CONFIG      optional (path to config.json)
   FIRECRAWL_API_KEY     optional website extraction fallback (Markdown)
   APIFY_API_TOKEN       optional YouTube transcript fallback
+  SUMMARIZE_APIFY_YOUTUBE_ACTOR optional Apify actor for YouTube transcripts
 `
   )
 }
@@ -342,6 +348,10 @@ export async function runCli(
 
   const configPathArg =
     typeof program.opts().config === 'string' ? (program.opts().config as string) : null
+  const apifyYoutubeActorArg =
+    typeof program.opts().apifyYoutubeActor === 'string'
+      ? (program.opts().apifyYoutubeActor as string)
+      : null
   const { config, path: configPath } = loadSummarizeConfig({ env, configPathArg })
 
   const xaiKeyRaw = typeof env.XAI_API_KEY === 'string' ? env.XAI_API_KEY : null
@@ -370,6 +380,12 @@ export async function runCli(
 
   const model = normalizeGatewayStyleModelId((modelArg?.trim() ?? '') || resolvedDefaultModel)
   const parsedModelForLlm = parseGatewayStyleModelId(model)
+
+  const apifyYoutubeActor =
+    (apifyYoutubeActorArg?.trim() ?? '') ||
+    (typeof env.SUMMARIZE_APIFY_YOUTUBE_ACTOR === 'string' ? env.SUMMARIZE_APIFY_YOUTUBE_ACTOR.trim() : '') ||
+    (typeof config?.apifyYoutubeActor === 'string' ? config.apifyYoutubeActor.trim() : '') ||
+    null
 
   const verboseColor = supportsColor(stderr, env)
 
@@ -421,6 +437,12 @@ export async function runCli(
   writeVerbose(
     stderr,
     verbose,
+    `apify youtubeActor=${formatOptionalString(apifyYoutubeActor)}`,
+    verboseColor
+  )
+  writeVerbose(
+    stderr,
+    verbose,
     `configFile path=${formatOptionalString(configPath)} model=${formatOptionalString(
       config?.model ?? null
     )}`,
@@ -457,6 +479,7 @@ export async function runCli(
 
   const client = createLinkPreviewClient({
     apifyApiToken: apifyToken,
+    apifyYoutubeActor,
     scrapeWithFirecrawl,
     convertHtmlToMarkdown,
     fetch,

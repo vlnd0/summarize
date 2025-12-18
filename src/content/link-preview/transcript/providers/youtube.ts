@@ -77,6 +77,7 @@ export const fetchTranscript = async (
     const apifyTranscript = await fetchTranscriptWithApify(
       options.fetch,
       options.apifyApiToken,
+      options.apifyYoutubeActor,
       url
     )
     if (apifyTranscript) {

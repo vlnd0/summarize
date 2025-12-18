@@ -45,6 +45,7 @@ export interface LinkPreviewDeps {
   fetch: typeof fetch
   scrapeWithFirecrawl: ScrapeWithFirecrawl | null
   apifyApiToken: string | null
+  apifyYoutubeActor: string | null
   convertHtmlToMarkdown: ConvertHtmlToMarkdown | null
   transcriptCache: TranscriptCache | null
 }
