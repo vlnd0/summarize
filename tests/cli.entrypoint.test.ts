@@ -9,6 +9,7 @@ vi.mock('../src/cli-main.js', () => ({
 describe('cli entrypoint', () => {
   it('calls runCliMain with process streams', async () => {
     runCliMainMock.mockClear()
+    vi.resetModules()
     const previousExitCode = process.exitCode
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
       throw new Error(`process.exit(${code ?? 0})`)
@@ -37,5 +38,25 @@ describe('cli entrypoint', () => {
     expect(process.exitCode).toBe(123)
     process.exitCode = previousExitCode
     exitSpy.mockRestore()
+  })
+
+  it('prints a last-resort error when runCliMain rejects', async () => {
+    runCliMainMock.mockClear()
+    vi.resetModules()
+
+    const stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const previousExitCode = process.exitCode
+
+    runCliMainMock.mockRejectedValueOnce(new Error('boom'))
+    await import('../src/cli.js?reject=1')
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    const text = stderrWrite.mock.calls.map((args) => String(args[0])).join('')
+    expect(text).toContain('boom')
+    expect(process.exitCode).toBe(1)
+
+    process.exitCode = previousExitCode
+    stderrWrite.mockRestore()
   })
 })
