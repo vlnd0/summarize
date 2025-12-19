@@ -23,7 +23,7 @@ describe('buildLinkSummaryPrompt', () => {
     expect(prompt).not.toContain('Tweets from sharers:')
   })
 
-  it('adds a hard limit when summary length is specified in characters', () => {
+  it('adds a soft target when summary length is specified in characters', () => {
     const prompt = buildLinkSummaryPrompt({
       url: 'https://example.com',
       title: null,

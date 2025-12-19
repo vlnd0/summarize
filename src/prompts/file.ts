@@ -1,16 +1,5 @@
 import type { SummaryLengthTarget } from './link-summary.js'
-import {
-  estimateMaxCompletionTokensForCharacters,
-  pickSummaryLengthForCharacters,
-} from './link-summary.js'
-
-const SUMMARY_LENGTH_TO_TOKENS: Record<'short' | 'medium' | 'long' | 'xl' | 'xxl', number> = {
-  short: 768,
-  medium: 1536,
-  long: 3072,
-  xl: 6144,
-  xxl: 12288,
-}
+import { pickSummaryLengthForCharacters } from './link-summary.js'
 
 export function buildFileSummaryPrompt({
   filename,
@@ -20,7 +9,7 @@ export function buildFileSummaryPrompt({
   filename: string | null
   mediaType: string | null
   summaryLength: SummaryLengthTarget
-}): { prompt: string; maxOutputTokens: number } {
+}): string {
   const preset =
     typeof summaryLength === 'string'
       ? summaryLength
@@ -36,14 +25,9 @@ export function buildFileSummaryPrompt({
     mediaType ? `Media type: ${mediaType}` : null,
   ].filter(Boolean)
 
-  const maxOutputTokens =
-    typeof summaryLength === 'string'
-      ? (SUMMARY_LENGTH_TO_TOKENS[preset] ?? 1024)
-      : estimateMaxCompletionTokensForCharacters(summaryLength.maxCharacters)
-
   const prompt = `You summarize files for curious users. Summarize the attached file. Be factual and do not invent details. Format the answer in Markdown. Do not use emojis. ${maxCharactersLine}
 
 ${headerLines.length > 0 ? `${headerLines.join('\n')}\n\n` : ''}Return only the summary.`
 
-  return { prompt, maxOutputTokens }
+  return prompt
 }

@@ -93,3 +93,25 @@ export function parseLengthArg(raw: string): LengthArg {
   const multiplier = unit === 'k' ? 1000 : unit === 'm' ? 1_000_000 : 1
   return { kind: 'chars', maxCharacters: Math.floor(numeric * multiplier) }
 }
+
+export function parseMaxOutputTokensArg(raw: string | undefined): number | null {
+  if (raw === undefined || raw === null) return null
+  const normalized = raw.trim().toLowerCase()
+  if (!normalized) {
+    throw new Error(`Unsupported --max-output-tokens: ${raw}`)
+  }
+
+  const match = COUNT_PATTERN.exec(normalized)
+  if (!match?.groups) {
+    throw new Error(`Unsupported --max-output-tokens: ${raw}`)
+  }
+
+  const numeric = Number(match.groups.value)
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    throw new Error(`Unsupported --max-output-tokens: ${raw}`)
+  }
+
+  const unit = match.groups.unit?.toLowerCase() ?? null
+  const multiplier = unit === 'k' ? 1000 : unit === 'm' ? 1_000_000 : 1
+  return Math.floor(numeric * multiplier)
+}

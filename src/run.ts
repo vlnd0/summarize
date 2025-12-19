@@ -12,12 +12,13 @@ import {
 } from './content/asset.js'
 import { createLinkPreviewClient } from './content/index.js'
 import type { LlmCall } from './costs.js'
-import { buildRunCostReport } from './costs.js'
+import { buildRunMetricsReport } from './costs.js'
 import { createFirecrawlScraper } from './firecrawl.js'
 import {
   parseDurationMs,
   parseFirecrawlMode,
   parseLengthArg,
+  parseMaxOutputTokensArg,
   parseMarkdownMode,
   parseMetricsMode,
   parseRenderMode,
@@ -36,7 +37,6 @@ import {
 import {
   buildFileSummaryPrompt,
   buildLinkSummaryPrompt,
-  estimateMaxCompletionTokensForCharacters,
   SUMMARY_LENGTH_TO_TOKENS,
 } from './prompts/index.js'
 import { startOscProgress } from './tty/osc-progress.js'
@@ -54,6 +54,7 @@ type JsonOutput = {
   input: {
     timeoutMs: number
     length: { kind: 'preset'; preset: string } | { kind: 'chars'; maxCharacters: number }
+    maxOutputTokens: number | null
     model: string
   } & (
     | {
@@ -85,11 +86,11 @@ type JsonOutput = {
   llm: {
     provider: 'xai' | 'openai' | 'google' | 'anthropic'
     model: string
-    maxCompletionTokens: number
+    maxCompletionTokens: number | null
     strategy: 'single' | 'map-reduce'
     chunkCount: number
   } | null
-  metrics: ReturnType<typeof buildRunCostReport> | null
+  metrics: ReturnType<typeof buildRunMetricsReport> | null
   summary: string | null
 }
 
@@ -120,6 +121,11 @@ function buildProgram() {
       '--length <length>',
       'Summary length: short|medium|long|xl|xxl or a character limit like 20000, 20k',
       'medium'
+    )
+    .option(
+      '--max-output-tokens <count>',
+      'Hard cap for LLM output tokens (e.g. 2000, 2k). Overrides provider defaults.',
+      undefined
     )
     .option(
       '--timeout <duration>',
@@ -391,7 +397,7 @@ ${heading('Examples')}
   ${cmd('summarize "https://example.com" --extract-only')} ${dim('# website markdown (prefers Firecrawl when configured)')}
   ${cmd('summarize "https://example.com" --extract-only --markdown llm')} ${dim('# website markdown via LLM')}
   ${cmd('summarize "https://www.youtube.com/watch?v=I845O57ZSy4&t=11s" --extract-only --youtube web')}
-  ${cmd('summarize "https://example.com" --length 20k --timeout 2m --model openai/gpt-5.2')}
+  ${cmd('summarize "https://example.com" --length 20k --max-output-tokens 2k --timeout 2m --model openai/gpt-5.2')}
   ${cmd('OPENAI_BASE_URL=https://openrouter.ai/api/v1 OPENROUTER_API_KEY=... summarize "https://example.com" --model openai/xiaomi/mimo-v2-flash:free')}
   ${cmd('summarize "https://example.com" --json --verbose')}
 
@@ -419,7 +425,7 @@ async function summarizeWithModelId({
 }: {
   modelId: string
   prompt: string | ModelMessage[]
-  maxOutputTokens: number
+  maxOutputTokens?: number
   timeoutMs: number
   fetchImpl: typeof fetch
   apiKeys: {
@@ -552,6 +558,11 @@ function sumNumbersOrNull(values: Array<number | null>): number | null {
   return any ? sum : null
 }
 
+function formatUSD(value: number): string {
+  if (!Number.isFinite(value)) return 'n/a'
+  return `$${value.toFixed(4)}`
+}
+
 function writeFinishLine({
   stderr,
   elapsedMs,
@@ -559,6 +570,7 @@ function writeFinishLine({
   strategy,
   chunkCount,
   report,
+  costUsd,
   color,
 }: {
   stderr: NodeJS.WritableStream
@@ -566,15 +578,10 @@ function writeFinishLine({
   model: string
   strategy: 'single' | 'map-reduce' | 'none'
   chunkCount: number | null
-  report: ReturnType<typeof buildRunCostReport>
+  report: ReturnType<typeof buildRunMetricsReport>
+  costUsd: number | null
   color: boolean
 }): void {
-  const fmtUsd = (value: number | null) => {
-    if (!(typeof value === 'number' && Number.isFinite(value))) return 'unknown'
-    if (value === 0) return '$0.00'
-    if (value > 0 && value < 0.01) return '<$0.01'
-    return `$${value.toFixed(2)}`
-  }
   const promptTokens = sumNumbersOrNull(report.llm.map((row) => row.promptTokens))
   const completionTokens = sumNumbersOrNull(report.llm.map((row) => row.completionTokens))
   const totalTokens = sumNumbersOrNull(report.llm.map((row) => row.totalTokens))
@@ -584,7 +591,7 @@ function writeFinishLine({
       ? `tok(i/o/t)=${promptTokens?.toLocaleString() ?? 'unknown'}/${completionTokens?.toLocaleString() ?? 'unknown'}/${totalTokens?.toLocaleString() ?? 'unknown'}`
       : 'tok(i/o/t)=unknown'
 
-  const parts: string[] = [model, tokPart, `cost=${fmtUsd(report.totalEstimatedUsd)}`]
+  const parts: string[] = [model, costUsd != null ? `cost=${formatUSD(costUsd)}` : 'cost=N/A', tokPart]
 
   if (report.services.firecrawl.requests > 0) {
     parts.push(`firecrawl=${report.services.firecrawl.requests}`)
@@ -652,7 +659,7 @@ export async function runCli(
   const rawInput = program.args[0]
   if (!rawInput) {
     throw new Error(
-      'Usage: summarize <url-or-file> [--youtube auto|web|apify] [--length 20k] [--timeout 2m] [--json]'
+      'Usage: summarize <url-or-file> [--youtube auto|web|apify] [--length 20k] [--max-output-tokens 2k] [--timeout 2m] [--json]'
     )
   }
 
@@ -663,6 +670,9 @@ export async function runCli(
 
   const youtubeMode = parseYoutubeMode(program.opts().youtube as string)
   const lengthArg = parseLengthArg(program.opts().length as string)
+  const maxOutputTokensArg = parseMaxOutputTokensArg(
+    program.opts().maxOutputTokens as string | undefined
+  )
   const timeoutMs = parseDurationMs(program.opts().timeout as string)
   const extractOnly = Boolean(program.opts().extractOnly)
   const json = Boolean(program.opts().json)
@@ -747,15 +757,41 @@ export async function runCli(
     }
     return requested
   }
-  const buildReport = async () => {
+  const resolveMaxOutputTokensForCall = async (modelId: string): Promise<number | null> => {
+    if (typeof maxOutputTokensArg !== 'number') return null
+    return capMaxOutputTokensForModel({ modelId, requested: maxOutputTokensArg })
+  }
+
+  const estimateCostUsd = async (): Promise<number | null> => {
     const catalog = await getLiteLlmCatalog()
-    return buildRunCostReport({
-      llmCalls,
-      firecrawlRequests,
-      apifyRequests,
-      resolveLlmPricing: (modelId) =>
-        catalog ? resolveLiteLlmPricingForModelId(catalog, modelId) : null,
-    })
+    if (!catalog) return null
+
+    let total = 0
+    let any = false
+
+    for (const call of llmCalls) {
+      const promptTokens = call.usage?.promptTokens ?? null
+      const completionTokens = call.usage?.completionTokens ?? null
+      if (
+        typeof promptTokens !== 'number' ||
+        !Number.isFinite(promptTokens) ||
+        typeof completionTokens !== 'number' ||
+        !Number.isFinite(completionTokens)
+      ) {
+        continue
+      }
+
+      const pricing = resolveLiteLlmPricingForModelId(catalog, call.model)
+      if (!pricing) continue
+
+      total += promptTokens * pricing.inputUsdPerToken + completionTokens * pricing.outputUsdPerToken
+      any = true
+    }
+
+    return any ? total : null
+  }
+  const buildReport = async () => {
+    return buildRunMetricsReport({ llmCalls, firecrawlRequests, apifyRequests })
   }
 
   const trackedFetch: typeof fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -799,30 +835,24 @@ export async function runCli(
     if (!isRichTty(stdout)) return 'plain'
     return streamingEnabled ? 'md-live' : 'md'
   })()
-  const writeCostReport = (report: ReturnType<typeof buildRunCostReport>) => {
-    const fmtUsd = (value: number | null) =>
-      typeof value === 'number' && Number.isFinite(value) ? `$${value.toFixed(2)}` : 'unknown'
-
+  const writeMetricsReport = (report: ReturnType<typeof buildRunMetricsReport>) => {
+    const promptTokens = sumNumbersOrNull(report.llm.map((row) => row.promptTokens))
+    const completionTokens = sumNumbersOrNull(report.llm.map((row) => row.completionTokens))
+    const totalTokens = sumNumbersOrNull(report.llm.map((row) => row.totalTokens))
     for (const row of report.llm) {
       stderr.write(
-        `cost llm provider=${row.provider} model=${row.model} calls=${row.calls} promptTokens=${
+        `metrics llm provider=${row.provider} model=${row.model} calls=${row.calls} promptTokens=${
           row.promptTokens ?? 'unknown'
         } completionTokens=${row.completionTokens ?? 'unknown'} totalTokens=${
           row.totalTokens ?? 'unknown'
-        } estimated=${fmtUsd(row.estimatedUsd)}\n`
+        }\n`
       )
     }
+    stderr.write(`metrics firecrawl requests=${report.services.firecrawl.requests}\n`)
+    stderr.write(`metrics apify requests=${report.services.apify.requests}\n`)
     stderr.write(
-      `cost firecrawl requests=${report.services.firecrawl.requests} estimated=${fmtUsd(
-        report.services.firecrawl.estimatedUsd
-      )}\n`
+      `metrics total tok(i/o/t)=${promptTokens ?? 'unknown'}/${completionTokens ?? 'unknown'}/${totalTokens ?? 'unknown'}\n`
     )
-    stderr.write(
-      `cost apify requests=${report.services.apify.requests} estimated=${fmtUsd(
-        report.services.apify.estimatedUsd
-      )}\n`
-    )
-    stderr.write(`cost total estimated=${fmtUsd(report.totalEstimatedUsd)}\n`)
   }
 
   if (extractOnly && inputTarget.kind !== 'url') {
@@ -898,15 +928,14 @@ export async function runCli(
     const summaryLengthTarget =
       lengthArg.kind === 'preset' ? lengthArg.preset : { maxCharacters: lengthArg.maxCharacters }
 
-    const { prompt: promptText, maxOutputTokens } = buildFileSummaryPrompt({
+    const promptText = buildFileSummaryPrompt({
       filename: attachment.filename,
       mediaType: attachment.mediaType,
       summaryLength: summaryLengthTarget,
     })
-    const maxOutputTokensCapped = await capMaxOutputTokensForModel({
-      modelId: parsedModelEffective.canonical,
-      requested: maxOutputTokens,
-    })
+    const maxOutputTokensForCall = await resolveMaxOutputTokensForCall(
+      parsedModelEffective.canonical
+    )
 
     const promptPayload = buildAssetPromptPayload({ promptText, attachment })
 
@@ -929,7 +958,7 @@ export async function runCli(
           apiKeys: apiKeysForLlm,
           prompt: promptPayload,
           temperature: 0,
-          maxOutputTokens: maxOutputTokensCapped,
+          maxOutputTokens: maxOutputTokensForCall ?? undefined,
           timeoutMs,
           fetchImpl: trackedFetch,
         })
@@ -947,7 +976,7 @@ export async function runCli(
           const result = await summarizeWithModelId({
             modelId: parsedModelEffective.canonical,
             prompt: promptPayload,
-            maxOutputTokens: maxOutputTokensCapped,
+            maxOutputTokens: maxOutputTokensForCall ?? undefined,
             timeoutMs,
             fetchImpl: trackedFetch,
             apiKeys: apiKeysForLlm,
@@ -1055,7 +1084,7 @@ export async function runCli(
         result = await summarizeWithModelId({
           modelId: parsedModelEffective.canonical,
           prompt: promptPayload,
-          maxOutputTokens: maxOutputTokensCapped,
+          maxOutputTokens: maxOutputTokensForCall ?? undefined,
           timeoutMs,
           fetchImpl: trackedFetch,
           apiKeys: apiKeysForLlm,
@@ -1107,6 +1136,7 @@ export async function runCli(
                 lengthArg.kind === 'preset'
                   ? { kind: 'preset', preset: lengthArg.preset }
                   : { kind: 'chars', maxCharacters: lengthArg.maxCharacters },
+              maxOutputTokens: maxOutputTokensArg,
               model,
             }
           : {
@@ -1117,6 +1147,7 @@ export async function runCli(
                 lengthArg.kind === 'preset'
                   ? { kind: 'preset', preset: lengthArg.preset }
                   : { kind: 'chars', maxCharacters: lengthArg.maxCharacters },
+              maxOutputTokens: maxOutputTokensArg,
               model,
             }
       const payload: JsonOutput = {
@@ -1134,7 +1165,7 @@ export async function runCli(
         llm: {
           provider: parsedModelEffective.provider,
           model: parsedModelEffective.canonical,
-          maxCompletionTokens: maxOutputTokens,
+          maxCompletionTokens: maxOutputTokensForCall,
           strategy: 'single',
           chunkCount: 1,
         },
@@ -1143,10 +1174,11 @@ export async function runCli(
       }
 
       if (metricsDetailed && finishReport) {
-        writeCostReport(finishReport)
+        writeMetricsReport(finishReport)
       }
       stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
       if (metricsEnabled && finishReport) {
+        const costUsd = await estimateCostUsd()
         writeFinishLine({
           stderr,
           elapsedMs: Date.now() - runStartedAtMs,
@@ -1154,6 +1186,7 @@ export async function runCli(
           strategy: 'single',
           chunkCount: 1,
           report: finishReport,
+          costUsd,
           color: verboseColor,
         })
       }
@@ -1178,8 +1211,9 @@ export async function runCli(
     }
 
     const report = shouldComputeReport ? await buildReport() : null
-    if (metricsDetailed && report) writeCostReport(report)
+    if (metricsDetailed && report) writeMetricsReport(report)
     if (metricsEnabled && report) {
+      const costUsd = await estimateCostUsd()
       writeFinishLine({
         stderr,
         elapsedMs: Date.now() - runStartedAtMs,
@@ -1187,6 +1221,7 @@ export async function runCli(
         strategy: 'single',
         chunkCount: 1,
         report,
+        costUsd,
         color: verboseColor,
       })
     }
@@ -1208,7 +1243,7 @@ export async function runCli(
       indeterminate: true,
       env,
       isTty: progressEnabled,
-      write: (data) => stderr.write(data),
+      write: (data: string) => stderr.write(data),
     })
     const spinner = startSpinner({
       text: sizeLabel ? `Loading file (${sizeLabel})…` : 'Loading file…',
@@ -1254,7 +1289,7 @@ export async function runCli(
         indeterminate: true,
         env,
         isTty: progressEnabled,
-        write: (data) => stderr.write(data),
+        write: (data: string) => stderr.write(data),
       })
       const spinner = startSpinner({
         text: 'Downloading file…',
@@ -1342,7 +1377,7 @@ export async function runCli(
     verbose,
     `config url=${url} timeoutMs=${timeoutMs} youtube=${youtubeMode} firecrawl=${firecrawlMode} length=${
       lengthArg.kind === 'preset' ? lengthArg.preset : `${lengthArg.maxCharacters} chars`
-    } json=${json} extractOnly=${extractOnly} markdown=${effectiveMarkdownMode} model=${model} stream=${effectiveStreamMode} render=${effectiveRenderMode}`,
+    } maxOutputTokens=${formatOptionalNumber(maxOutputTokensArg)} json=${json} extractOnly=${extractOnly} markdown=${effectiveMarkdownMode} model=${model} stream=${effectiveStreamMode} render=${effectiveRenderMode}`,
     verboseColor
   )
   writeVerbose(
@@ -1392,7 +1427,7 @@ export async function runCli(
     indeterminate: true,
     env,
     isTty: progressEnabled,
-    write: (data) => stderr.write(data),
+    write: (data: string) => stderr.write(data),
   })
   const spinner = startSpinner({
     text: 'Fetching website (connecting)…',
@@ -1596,6 +1631,7 @@ export async function runCli(
               lengthArg.kind === 'preset'
                 ? { kind: 'preset', preset: lengthArg.preset }
                 : { kind: 'chars', maxCharacters: lengthArg.maxCharacters },
+            maxOutputTokens: maxOutputTokensArg,
             model,
           },
           env: {
@@ -1613,10 +1649,11 @@ export async function runCli(
           summary: null,
         }
         if (metricsDetailed && finishReport) {
-          writeCostReport(finishReport)
+          writeMetricsReport(finishReport)
         }
         stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
         if (metricsEnabled && finishReport) {
+          const costUsd = await estimateCostUsd()
           writeFinishLine({
             stderr,
             elapsedMs: Date.now() - runStartedAtMs,
@@ -1624,6 +1661,7 @@ export async function runCli(
             strategy: 'none',
             chunkCount: null,
             report: finishReport,
+            costUsd,
             color: verboseColor,
           })
         }
@@ -1632,8 +1670,9 @@ export async function runCli(
 
       stdout.write(`${extracted.content}\n`)
       const report = shouldComputeReport ? await buildReport() : null
-      if (metricsDetailed && report) writeCostReport(report)
+      if (metricsDetailed && report) writeMetricsReport(report)
       if (metricsEnabled && report) {
+        const costUsd = await estimateCostUsd()
         writeFinishLine({
           stderr,
           elapsedMs: Date.now() - runStartedAtMs,
@@ -1641,6 +1680,7 @@ export async function runCli(
           strategy: 'none',
           chunkCount: null,
           report,
+          costUsd,
           color: verboseColor,
         })
       }
@@ -1695,14 +1735,9 @@ export async function runCli(
       `mode summarize provider=${parsedModelEffective.provider} model=${parsedModelEffective.canonical}`,
       verboseColor
     )
-    const maxCompletionTokens =
-      lengthArg.kind === 'preset'
-        ? SUMMARY_LENGTH_TO_TOKENS[lengthArg.preset]
-        : estimateMaxCompletionTokensForCharacters(lengthArg.maxCharacters)
-    const maxOutputTokensForCall = await capMaxOutputTokensForModel({
-      modelId: parsedModelEffective.canonical,
-      requested: maxCompletionTokens,
-    })
+    const maxOutputTokensForCall = await resolveMaxOutputTokensForCall(
+      parsedModelEffective.canonical
+    )
 
     const isLargeContent = extracted.content.length >= MAP_REDUCE_TRIGGER_CHARACTERS
     let strategy: 'single' | 'map-reduce' = 'single'
@@ -1733,7 +1768,7 @@ export async function runCli(
             apiKeys: apiKeysForLlm,
             prompt,
             temperature: 0,
-            maxOutputTokens: maxOutputTokensForCall,
+            maxOutputTokens: maxOutputTokensForCall ?? undefined,
             timeoutMs,
             fetchImpl: trackedFetch,
           })
@@ -1751,7 +1786,7 @@ export async function runCli(
             const result = await summarizeWithModelId({
               modelId: parsedModelEffective.canonical,
               prompt,
-              maxOutputTokens: maxOutputTokensForCall,
+              maxOutputTokens: maxOutputTokensForCall ?? undefined,
               timeoutMs,
               fetchImpl: trackedFetch,
               apiKeys: apiKeysForLlm,
@@ -1840,7 +1875,7 @@ export async function runCli(
         const result = await summarizeWithModelId({
           modelId: parsedModelEffective.canonical,
           prompt,
-          maxOutputTokens: maxOutputTokensForCall,
+          maxOutputTokens: maxOutputTokensForCall ?? undefined,
           timeoutMs,
           fetchImpl: trackedFetch,
           apiKeys: apiKeysForLlm,
@@ -1880,9 +1915,13 @@ export async function runCli(
           content: chunks[i] ?? '',
         })
 
+        const chunkNoteTokensRequested =
+          typeof maxOutputTokensArg === 'number'
+            ? Math.min(SUMMARY_LENGTH_TO_TOKENS.medium, maxOutputTokensArg)
+            : SUMMARY_LENGTH_TO_TOKENS.medium
         const chunkNoteTokens = await capMaxOutputTokensForModel({
           modelId: parsedModelEffective.canonical,
-          requested: SUMMARY_LENGTH_TO_TOKENS.medium,
+          requested: chunkNoteTokensRequested,
         })
         const notesResult = await summarizeWithModelId({
           modelId: parsedModelEffective.canonical,
@@ -1940,7 +1979,7 @@ export async function runCli(
             apiKeys: apiKeysForLlm,
             prompt: mergedPrompt,
             temperature: 0,
-            maxOutputTokens: maxOutputTokensForCall,
+            maxOutputTokens: maxOutputTokensForCall ?? undefined,
             timeoutMs,
             fetchImpl: trackedFetch,
           })
@@ -1958,7 +1997,7 @@ export async function runCli(
             const mergedResult = await summarizeWithModelId({
               modelId: parsedModelEffective.canonical,
               prompt: mergedPrompt,
-              maxOutputTokens: maxOutputTokensForCall,
+              maxOutputTokens: maxOutputTokensForCall ?? undefined,
               timeoutMs,
               fetchImpl: trackedFetch,
               apiKeys: apiKeysForLlm,
@@ -2047,7 +2086,7 @@ export async function runCli(
         const mergedResult = await summarizeWithModelId({
           modelId: parsedModelEffective.canonical,
           prompt: mergedPrompt,
-          maxOutputTokens: maxOutputTokensForCall,
+          maxOutputTokens: maxOutputTokensForCall ?? undefined,
           timeoutMs,
           fetchImpl: trackedFetch,
           apiKeys: apiKeysForLlm,
@@ -2085,6 +2124,7 @@ export async function runCli(
             lengthArg.kind === 'preset'
               ? { kind: 'preset', preset: lengthArg.preset }
               : { kind: 'chars', maxCharacters: lengthArg.maxCharacters },
+          maxOutputTokens: maxOutputTokensArg,
           model,
         },
         env: {
@@ -2100,7 +2140,7 @@ export async function runCli(
         llm: {
           provider: parsedModelEffective.provider,
           model: parsedModelEffective.canonical,
-          maxCompletionTokens,
+          maxCompletionTokens: maxOutputTokensForCall,
           strategy,
           chunkCount,
         },
@@ -2109,10 +2149,11 @@ export async function runCli(
       }
 
       if (metricsDetailed && finishReport) {
-        writeCostReport(finishReport)
+        writeMetricsReport(finishReport)
       }
       stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
       if (metricsEnabled && finishReport) {
+        const costUsd = await estimateCostUsd()
         writeFinishLine({
           stderr,
           elapsedMs: Date.now() - runStartedAtMs,
@@ -2120,6 +2161,7 @@ export async function runCli(
           strategy,
           chunkCount,
           report: finishReport,
+          costUsd,
           color: verboseColor,
         })
       }
@@ -2144,8 +2186,9 @@ export async function runCli(
     }
 
     const report = shouldComputeReport ? await buildReport() : null
-    if (metricsDetailed && report) writeCostReport(report)
+    if (metricsDetailed && report) writeMetricsReport(report)
     if (metricsEnabled && report) {
+      const costUsd = await estimateCostUsd()
       writeFinishLine({
         stderr,
         elapsedMs: Date.now() - runStartedAtMs,
@@ -2153,6 +2196,7 @@ export async function runCli(
         strategy,
         chunkCount,
         report,
+        costUsd,
         color: verboseColor,
       })
     }

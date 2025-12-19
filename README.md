@@ -7,7 +7,7 @@ Fast CLI for summarizing *anything you can point at*:
 - Remote files (PDFs/images/audio/video via URL — downloaded and forwarded to the model)
 - Local files (PDFs/images/audio/video/text — forwarded or inlined; support depends on provider/model)
 
-It streams output by default on TTY and renders Markdown to ANSI (via `markdansi`). At the end it prints a single “Finished in …” line with timing, token usage, and estimated cost (when available).
+It streams output by default on TTY and renders Markdown to ANSI (via `markdansi`). At the end it prints a single “Finished in …” line with timing and token usage.
 
 ## Quickstart
 
@@ -73,8 +73,8 @@ npx -y @steipete/summarize "https://example.com" --length 20k
 
 - Presets: `short|medium|long|xl|xxl`
 - Character targets: `1500`, `20k`, `20000`
-
-Internally we pass a `maxOutputTokens` limit to the provider request. There is **no global cap**; when possible we clamp only to the provider/model’s own max output tokens (from the LiteLLM catalog) to avoid request failures.
+- Optional hard cap: `--max-output-tokens <count>` (e.g. `2000`, `2k`)
+  - Provider/model APIs still enforce their own maximum output limits.
 
 ## Common flags
 
@@ -85,6 +85,7 @@ npx -y @steipete/summarize <input> [flags]
 - `--model <provider/model>`: which model to use (defaults to `google/gemini-3-flash-preview`)
 - `--timeout <duration>`: `30s`, `2m`, `5000ms` (default `2m`)
 - `--length short|medium|long|xl|xxl|<chars>`
+- `--max-output-tokens <count>`: hard cap for LLM output tokens (optional)
 - `--stream auto|on|off`: stream LLM output (`auto` = TTY only; disabled in `--json` mode)
 - `--render auto|md-live|md|plain`: Markdown rendering (`auto` = best default for TTY)
 - `--extract-only`: print extracted content and exit (no summary) — only for URLs
@@ -137,19 +138,23 @@ Set the key matching your chosen `--model`:
 - `GEMINI_API_KEY` (for `google/...`)  
   - also accepts `GOOGLE_GENERATIVE_AI_API_KEY` and `GOOGLE_API_KEY` as aliases
 
+OpenRouter (OpenAI-compatible):
+
+- Set `OPENAI_BASE_URL=https://openrouter.ai/api/v1`
+- Prefer `OPENROUTER_API_KEY=...` (instead of reusing `OPENAI_API_KEY`)
+- Use OpenRouter models via the `openai/...` prefix, e.g. `--model openai/xiaomi/mimo-v2-flash:free`
+
 Optional services:
 
 - `FIRECRAWL_API_KEY` (website extraction fallback)
 - `APIFY_API_TOKEN` (YouTube transcript fallback)
 
-## Pricing + cost reporting
+## Model limits
 
-`--metrics` and the final “Finished in …” line use the LiteLLM model catalog for pricing and model limits:
+The CLI uses the LiteLLM model catalog for model limits (like max output tokens):
 
 - Downloaded from: `https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json`
 - Cached at: `~/.summarize/cache/`
-
-USD cost is best-effort; token counts are the source of truth.
 
 ## Library usage (optional)
 
