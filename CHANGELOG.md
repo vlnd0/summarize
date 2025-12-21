@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 - Unreleased
+
+### Docs
+
+- Update README for the new Markdown/extract/preprocess flags.
+- Improve release checklist notes (avoid literal `\\n` in GitHub release bodies).
+
 ## 0.4.0 - 2025-12-21
 
 ### Changes
