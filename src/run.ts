@@ -746,12 +746,28 @@ function formatUSD(value: number): string {
   return `$${value.toFixed(4)}`
 }
 
+function normalizeStreamText(input: string): string {
+  return input.replace(/\r\n?/g, '\n')
+}
+
 function mergeStreamingChunk(previous: string, chunk: string): { next: string; appended: string } {
   if (!chunk) return { next: previous, appended: '' }
-  if (chunk.startsWith(previous)) {
-    return { next: chunk, appended: chunk.slice(previous.length) }
+  const prev = normalizeStreamText(previous)
+  const nextChunk = normalizeStreamText(chunk)
+  if (!prev) return { next: nextChunk, appended: nextChunk }
+  if (nextChunk.startsWith(prev)) {
+    return { next: nextChunk, appended: nextChunk.slice(prev.length) }
   }
-  return { next: previous + chunk, appended: chunk }
+  if (prev.startsWith(nextChunk)) {
+    return { next: prev, appended: '' }
+  }
+  const maxOverlap = Math.min(prev.length, nextChunk.length, 2048)
+  for (let len = maxOverlap; len > 0; len -= 1) {
+    if (prev.slice(-len) === nextChunk.slice(0, len)) {
+      return { next: prev + nextChunk.slice(len), appended: nextChunk.slice(len) }
+    }
+  }
+  return { next: prev + nextChunk, appended: nextChunk }
 }
 
 function writeFinishLine({
