@@ -1663,6 +1663,72 @@ export async function runCli(
           ? ('text' as const)
           : ('file' as const)
     const requiresVideoUnderstanding = kind === 'video' && videoMode !== 'transcript'
+    const extractedTextForNoModel =
+      kind === 'text' ? (usingPreprocessedMarkdown ? preprocessedMarkdown : textContent?.content ?? null) : null
+
+    if (
+      requestedModel.kind === 'auto' &&
+      typeof desiredOutputTokens === 'number' &&
+      typeof extractedTextForNoModel === 'string' &&
+      extractedTextForNoModel.trim().length > 0 &&
+      countTokens(extractedTextForNoModel) <= desiredOutputTokens
+    ) {
+      clearProgressForStdout()
+      if (json) {
+        const finishReport = shouldComputeReport ? await buildReport() : null
+        const input: JsonOutput['input'] =
+          sourceKind === 'file'
+            ? {
+                kind: 'file',
+                filePath: sourceLabel,
+                timeoutMs,
+                length:
+                  lengthArg.kind === 'preset'
+                    ? { kind: 'preset', preset: lengthArg.preset }
+                    : { kind: 'chars', maxCharacters: lengthArg.maxCharacters },
+                maxOutputTokens: maxOutputTokensArg,
+                model: requestedModelLabel,
+              }
+            : {
+                kind: 'asset-url',
+                url: sourceLabel,
+                timeoutMs,
+                length:
+                  lengthArg.kind === 'preset'
+                    ? { kind: 'preset', preset: lengthArg.preset }
+                    : { kind: 'chars', maxCharacters: lengthArg.maxCharacters },
+                maxOutputTokens: maxOutputTokensArg,
+                model: requestedModelLabel,
+              }
+        const payload: JsonOutput = {
+          input,
+          env: {
+            hasXaiKey: Boolean(xaiApiKey),
+            hasOpenAIKey: Boolean(apiKey),
+            hasApifyToken: Boolean(apifyToken),
+            hasFirecrawlKey: firecrawlConfigured,
+            hasGoogleKey: googleConfigured,
+            hasAnthropicKey: anthropicConfigured,
+          },
+          extracted: {
+            kind: 'asset',
+            source: sourceLabel,
+            mediaType: attachment.mediaType,
+            filename: attachment.filename,
+          },
+          prompt: promptText,
+          llm: null,
+          metrics: metricsEnabled ? finishReport : null,
+          summary: extractedTextForNoModel.trim(),
+        }
+        stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
+        return
+      }
+
+      stdout.write(`${extractedTextForNoModel.trim()}\n`)
+      writeViaFooter(assetFooterParts)
+      return
+    }
 
     const attempts: ModelAttempt[] = await (async () => {
       if (requestedModel.kind === 'auto') {
