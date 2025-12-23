@@ -5,7 +5,6 @@
 ### Breaking
 
 - Default model is now `auto` (instead of a fixed default like `google/gemini-3-flash-preview`).
-- Config: legacy top-level `"auto"` is no longer supported; configure via `"model": { "mode": "auto", "rules": [...] }`.
 - Config: JSON5 parsing remains, but comments (`//`, `/* */`) are rejected.
 
 ### Features

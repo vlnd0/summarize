@@ -48,13 +48,14 @@ describe('config error handling', () => {
     expect(() => loadSummarizeConfig({ env: { HOME: root } })).toThrow(/"model" must not be empty/i)
   })
 
-  it('throws when top-level auto is present (legacy)', () => {
+  it('ignores unexpected top-level keys (including "auto")', () => {
     const root = mkdtempSync(join(tmpdir(), 'summarize-config-'))
     const configPath = join(root, '.summarize', 'config.json')
     mkdirSync(join(root, '.summarize'), { recursive: true })
     writeFileSync(configPath, JSON.stringify({ model: { mode: 'auto' }, auto: [] }), 'utf8')
 
-    expect(() => loadSummarizeConfig({ env: { HOME: root } })).toThrow(/top-level "auto"/i)
+    const loaded = loadSummarizeConfig({ env: { HOME: root } })
+    expect(loaded.config?.model).toEqual({ mode: 'auto' })
   })
 
   it('throws when model.rules is not an array', () => {

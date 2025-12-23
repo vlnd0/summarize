@@ -240,12 +240,6 @@ export function loadSummarizeConfig({ env }: { env: Record<string, string | unde
     throw new Error(`Invalid config file ${path}: expected an object at the top level`)
   }
 
-  if (typeof parsed.auto !== 'undefined') {
-    throw new Error(
-      `Invalid config file ${path}: legacy top-level "auto" is not supported (use "model": { "mode": "auto", "rules": [...] }).`
-    )
-  }
-
   const model = (() => {
     const raw = parsed.model
     if (typeof raw === 'undefined') return undefined
