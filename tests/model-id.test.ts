@@ -18,7 +18,13 @@ describe('model id parsing', () => {
     expect(normalizeGatewayStyleModelId('grok-4-1-fast-non-reasoning')).toBe(
       'xai/grok-4-fast-non-reasoning'
     )
+    expect(normalizeGatewayStyleModelId('grok-4.1-fast-non-reasoning')).toBe(
+      'xai/grok-4-fast-non-reasoning'
+    )
     expect(normalizeGatewayStyleModelId('xai/grok-4-1-fast-non-reasoning')).toBe(
+      'xai/grok-4-fast-non-reasoning'
+    )
+    expect(normalizeGatewayStyleModelId('xai/grok-4.1-fast-non-reasoning')).toBe(
       'xai/grok-4-fast-non-reasoning'
     )
   })
@@ -47,5 +53,17 @@ describe('model id parsing', () => {
       model: 'grok-4-fast-non-reasoning',
       canonical: 'xai/grok-4-fast-non-reasoning',
     })
+  })
+
+  it('rejects unsupported providers', () => {
+    expect(() => normalizeGatewayStyleModelId('meta/llama-3')).toThrow(/Unsupported model provider/)
+  })
+
+  it('rejects missing model ids after provider prefix', () => {
+    expect(() => normalizeGatewayStyleModelId('openai/')).toThrow(/Missing model id after provider prefix/)
+  })
+
+  it('rejects empty model ids', () => {
+    expect(() => normalizeGatewayStyleModelId('   ')).toThrow(/Missing model id/)
   })
 })
