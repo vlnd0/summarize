@@ -34,10 +34,6 @@ export function isCliDisabled(
 ): boolean {
   if (!config) return false
   if (Array.isArray(config.enabled) && !config.enabled.includes(provider)) return true
-  if (Array.isArray(config.disabled) && config.disabled.includes(provider)) return true
-  const providerConfig =
-    provider === 'claude' ? config.claude : provider === 'codex' ? config.codex : config.gemini
-  if (providerConfig?.enabled === false) return true
   return false
 }
 

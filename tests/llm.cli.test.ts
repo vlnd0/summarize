@@ -73,7 +73,10 @@ describe('runCliModel', () => {
           stdin: { write: () => {}, end: () => {} },
         } as unknown as ReturnType<ExecFileFn>
       }
-      fs.writeFile(outputPath, 'ok', 'utf8').then(() => cb?.(null, '', ''))
+      void fs.writeFile(outputPath, 'ok', 'utf8').then(
+        () => cb?.(null, '', ''),
+        (error) => cb?.(error as Error, '', '')
+      )
       return {
         stdin: { write: () => {}, end: () => {} },
       } as unknown as ReturnType<ExecFileFn>
@@ -127,8 +130,8 @@ describe('runCliModel', () => {
 describe('cli helpers', () => {
   it('resolves disabled providers', () => {
     expect(isCliDisabled('claude', null)).toBe(false)
-    expect(isCliDisabled('codex', { disabled: ['codex'] })).toBe(true)
-    expect(isCliDisabled('gemini', { gemini: { enabled: false } })).toBe(true)
+    expect(isCliDisabled('codex', { enabled: ['claude'] })).toBe(true)
+    expect(isCliDisabled('gemini', { enabled: ['gemini'] })).toBe(false)
   })
 
   it('resolves binaries', () => {

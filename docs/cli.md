@@ -26,7 +26,7 @@ Disable globally:
 }
 ```
 
-Disable per provider:
+Allow only specific providers:
 
 ```json
 {
@@ -57,7 +57,6 @@ path-based prompt and enables the required tool flags:
   "cli": {
     "enabled": ["claude", "gemini", "codex"],
     "prefer": true,
-    "disabled": ["claude"],
     "codex": { "model": "gpt-5.2" },
     "gemini": { "model": "gemini-3-flash-preview", "extraArgs": ["--verbose"] },
     "claude": {

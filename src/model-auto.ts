@@ -122,10 +122,6 @@ function isCliProviderEnabled(provider: CliProvider, config: SummarizeConfig | n
   const cli = config?.cli
   if (!cli) return true
   if (Array.isArray(cli.enabled) && !cli.enabled.includes(provider)) return false
-  if (Array.isArray(cli.disabled) && cli.disabled.includes(provider)) return false
-  const providerConfig =
-    provider === 'claude' ? cli.claude : provider === 'codex' ? cli.codex : cli.gemini
-  if (providerConfig?.enabled === false) return false
   return true
 }
 

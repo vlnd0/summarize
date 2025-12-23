@@ -276,9 +276,7 @@ describe('config loading', () => {
       cli: {
         enabled: ['claude', 'gemini'],
         prefer: false,
-        disabled: ['claude'],
         claude: {
-          enabled: false,
           binary: '/opt/claude',
           model: 'sonnet',
           extraArgs: ['--foo'],
@@ -296,9 +294,7 @@ describe('config loading', () => {
       cli: {
         enabled: ['claude', 'gemini'],
         prefer: false,
-        disabled: ['claude'],
         claude: {
-          enabled: false,
           binary: '/opt/claude',
           model: 'sonnet',
           extraArgs: ['--foo'],
@@ -312,14 +308,19 @@ describe('config loading', () => {
     })
   })
 
-  it('rejects invalid cli disabled providers', () => {
-    const { root } = writeJsonConfig({ cli: { disabled: ['nope'] } })
-    expect(() => loadSummarizeConfig({ env: { HOME: root } })).toThrow(/unknown CLI provider/)
-  })
-
   it('rejects invalid cli enabled providers', () => {
     const { root } = writeJsonConfig({ cli: { enabled: ['nope'] } })
     expect(() => loadSummarizeConfig({ env: { HOME: root } })).toThrow(/unknown CLI provider/)
+  })
+
+  it('rejects cli disabled and provider enabled flags', () => {
+    const { root } = writeJsonConfig({ cli: { disabled: ['claude'] } })
+    expect(() => loadSummarizeConfig({ env: { HOME: root } })).toThrow(/cli\.disabled/)
+
+    const { root: rootProvider } = writeJsonConfig({ cli: { claude: { enabled: true } } })
+    expect(() => loadSummarizeConfig({ env: { HOME: rootProvider } })).toThrow(
+      /cli\.claude\.enabled/
+    )
   })
 
   it('rejects invalid cli extraArgs', () => {

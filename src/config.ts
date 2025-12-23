@@ -11,11 +11,9 @@ export type CliProviderConfig = {
   binary?: string
   extraArgs?: string[]
   model?: string
-  enabled?: boolean
 }
 export type CliConfig = {
   enabled?: CliProvider[]
-  disabled?: CliProvider[]
   prefer?: boolean
   claude?: CliProviderConfig
   codex?: CliProviderConfig
@@ -125,9 +123,13 @@ function parseCliProviderConfig(raw: unknown, path: string, label: string): CliP
   if (!isRecord(raw)) {
     throw new Error(`Invalid config file ${path}: "cli.${label}" must be an object.`)
   }
+  if (typeof raw.enabled !== 'undefined') {
+    throw new Error(
+      `Invalid config file ${path}: "cli.${label}.enabled" is not supported. Use "cli.enabled" instead.`
+    )
+  }
   const binaryValue = typeof raw.binary === 'string' ? raw.binary.trim() : undefined
   const modelValue = typeof raw.model === 'string' ? raw.model.trim() : undefined
-  const enabledValue = typeof raw.enabled === 'boolean' ? raw.enabled : undefined
   const extraArgs =
     typeof raw.extraArgs === 'undefined'
       ? undefined
@@ -135,7 +137,6 @@ function parseCliProviderConfig(raw: unknown, path: string, label: string): CliP
   return {
     ...(binaryValue ? { binary: binaryValue } : {}),
     ...(modelValue ? { model: modelValue } : {}),
-    ...(typeof enabledValue === 'boolean' ? { enabled: enabledValue } : {}),
     ...(extraArgs && extraArgs.length > 0 ? { extraArgs } : {}),
   }
 }
@@ -417,13 +418,14 @@ export function loadSummarizeConfig({ env }: { env: Record<string, string | unde
     const value = parsed.cli
     if (!isRecord(value)) return undefined
 
+    if (typeof value.disabled !== 'undefined') {
+      throw new Error(
+        `Invalid config file ${path}: "cli.disabled" is not supported. Use "cli.enabled" instead.`
+      )
+    }
     const enabled =
       typeof value.enabled !== 'undefined'
         ? parseCliProviderList(value.enabled, path, 'cli.enabled')
-        : undefined
-    const disabled =
-      typeof value.disabled !== 'undefined'
-        ? parseCliProviderList(value.disabled, path, 'cli.disabled')
         : undefined
     const prefer = typeof value.prefer === 'boolean' ? value.prefer : undefined
     const claude = value.claude ? parseCliProviderConfig(value.claude, path, 'claude') : undefined
@@ -442,7 +444,6 @@ export function loadSummarizeConfig({ env }: { env: Record<string, string | unde
         : parseStringArray(value.extraArgs, path, 'cli.extraArgs')
 
     return enabled ||
-      disabled ||
       typeof prefer === 'boolean' ||
       claude ||
       codex ||
@@ -453,7 +454,6 @@ export function loadSummarizeConfig({ env }: { env: Record<string, string | unde
       (extraArgs && extraArgs.length > 0)
       ? {
           ...(enabled ? { enabled } : {}),
-          ...(disabled ? { disabled } : {}),
           ...(typeof prefer === 'boolean' ? { prefer } : {}),
           ...(claude ? { claude } : {}),
           ...(codex ? { codex } : {}),
