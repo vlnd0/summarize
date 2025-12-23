@@ -1200,13 +1200,15 @@ export async function runCli(
 
     const runsRaw = readArgValue('--runs')
     const smartRaw = readArgValue('--smart')
+    const minBRaw = readArgValue('--min-b')
     const runs = runsRaw ? Number(runsRaw) : 3
     const smart = smartRaw ? Number(smartRaw) : 3
+    const minB = minBRaw ? Number(minBRaw) : 27
 
     if (help) {
       stdout.write(
         [
-          'Usage: summarizer refresh-free [--runs 3] [--smart 3] [--verbose]',
+          'Usage: summarizer refresh-free [--runs 3] [--smart 3] [--min-b 27] [--verbose]',
           '',
           'Writes ~/.summarize/config.json (models.free) with working OpenRouter :free candidates.',
         ].join('\n') + '\n'
@@ -1216,6 +1218,7 @@ export async function runCli(
 
     if (!Number.isFinite(runs) || runs <= 0) throw new Error('--runs must be a positive number')
     if (!Number.isFinite(smart) || smart < 0) throw new Error('--smart must be >= 0')
+    if (!Number.isFinite(minB) || minB < 0) throw new Error('--min-b must be >= 0')
 
     await generateFree({
       env,
@@ -1223,7 +1226,7 @@ export async function runCli(
       stdout,
       stderr,
       verbose,
-      options: { runs, smart, maxCandidates: 10, concurrency: 4, timeoutMs: 10_000 },
+      options: { runs, smart, minParamB: minB, maxCandidates: 10, concurrency: 4, timeoutMs: 10_000 },
     })
     return
   }

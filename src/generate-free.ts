@@ -13,6 +13,7 @@ type GenerateFreeOptions = {
   maxCandidates: number
   concurrency: number
   timeoutMs: number
+  minParamB: number
 }
 
 function supportsColor(
@@ -194,6 +195,7 @@ export async function generateFree({
     maxCandidates: 10,
     concurrency: 4,
     timeoutMs: 10_000,
+    minParamB: 27,
     ...options,
   }
   const RUNS = Math.max(1, Math.floor(resolved.runs))
@@ -201,6 +203,7 @@ export async function generateFree({
   const MAX_CANDIDATES = Math.max(1, Math.floor(resolved.maxCandidates))
   const CONCURRENCY = Math.max(1, Math.floor(resolved.concurrency))
   const TIMEOUT_MS = Math.max(1, Math.floor(resolved.timeoutMs))
+  const MIN_PARAM_B = Math.max(0, Math.floor(resolved.minParamB))
 
   stderr.write(`${heading('OpenRouter')}: fetching models…\n`)
   const response = await fetchImpl('https://openrouter.ai/api/v1/models', {
@@ -262,7 +265,6 @@ export async function generateFree({
     .filter((v): v is OpenRouterModelEntry => Boolean(v))
 
   const freeModelsAll = catalogModels.filter((m) => m.id.endsWith(':free'))
-  const MIN_PARAM_B = 7
   const freeModels = freeModelsAll.filter((m) => {
     if (m.inferredParamB === null) return true
     return m.inferredParamB >= MIN_PARAM_B
@@ -613,8 +615,8 @@ export async function generateFree({
     const out =
       typeof r.maxCompletionTokens === 'number' ? `out=${r.maxCompletionTokens}` : null
     const modality = r.modality ? `modality=${r.modality}` : null
-    const sp = `supported_parameters=${r.supportedParametersCount}`
-    const meta = [ctx, out, modality, sp].filter(Boolean).join(' ')
+    const params = typeof r.inferredParamB === 'number' ? `~${r.inferredParamB}B` : null
+    const meta = [params, ctx, out, modality].filter(Boolean).join(' ')
     stderr.write(
       `- ${modelId} ${dim(`avg ${formatMs(avg)} (n=${r.successCount})`)} ${dim(meta)}\n`
     )
