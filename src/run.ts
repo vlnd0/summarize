@@ -270,6 +270,7 @@ type JsonOutput = {
   env: {
     hasXaiKey: boolean
     hasOpenAIKey: boolean
+    hasOpenRouterKey: boolean
     hasApifyToken: boolean
     hasFirecrawlKey: boolean
     hasGoogleKey: boolean
@@ -1112,7 +1113,16 @@ export async function runCli(
   const xaiApiKey = xaiKeyRaw?.trim() ?? null
   const googleApiKey = googleKeyRaw?.trim() ?? null
   const anthropicApiKey = anthropicKeyRaw?.trim() ?? null
-  const openrouterApiKey = openRouterKeyRaw?.trim() ?? null
+  const openrouterApiKey = (() => {
+    const explicit = openRouterKeyRaw?.trim() ?? ''
+    if (explicit.length > 0) return explicit
+    const baseUrl = openaiBaseUrl?.trim() ?? ''
+    const openaiKey = openaiKeyRaw?.trim() ?? ''
+    if (baseUrl.length > 0 && /openrouter\.ai/i.test(baseUrl) && openaiKey.length > 0) {
+      return openaiKey
+    }
+    return null
+  })()
   const openaiTranscriptionKey = openaiKeyRaw?.trim() ?? null
   const googleConfigured = typeof googleApiKey === 'string' && googleApiKey.length > 0
   const xaiConfigured = typeof xaiApiKey === 'string' && xaiApiKey.length > 0
@@ -1120,6 +1130,7 @@ export async function runCli(
   const openrouterConfigured = typeof openrouterApiKey === 'string' && openrouterApiKey.length > 0
   const openrouterOptions = openRouterProviders ? { providers: openRouterProviders } : undefined
   const cliAvailability = resolveCliAvailability({ env, config })
+  const envForAuto = openrouterApiKey ? { ...env, OPENROUTER_API_KEY: openrouterApiKey } : env
 
   if (markdownModeExplicitlySet && format !== 'markdown') {
     throw new Error('--markdown-mode is only supported with --format md')
@@ -1264,6 +1275,12 @@ export async function runCli(
         ? 'free'
         : requestedModel.userModelId
   const isFallbackModel = requestedModel.kind === 'auto' || requestedModel.kind === 'free'
+
+  if (!extractMode && requestedModel.kind === 'free' && !openrouterConfigured) {
+    throw new Error(
+      'Missing OPENROUTER_API_KEY for --model free. Set OPENROUTER_API_KEY (or set OPENAI_BASE_URL to openrouter.ai and provide OPENAI_API_KEY).'
+    )
+  }
 
   const verboseColor = supportsColor(stderr, env)
   const effectiveStreamMode = (() => {
@@ -1943,6 +1960,7 @@ export async function runCli(
           env: {
             hasXaiKey: Boolean(xaiApiKey),
             hasOpenAIKey: Boolean(apiKey),
+            hasOpenRouterKey: Boolean(openrouterApiKey),
             hasApifyToken: Boolean(apifyToken),
             hasFirecrawlKey: firecrawlConfigured,
             hasGoogleKey: googleConfigured,
@@ -1977,7 +1995,7 @@ export async function runCli(
           promptTokens: promptTokensForAuto,
           desiredOutputTokens,
           requiresVideoUnderstanding,
-          env,
+          env: envForAuto,
           config,
           catalog,
           openrouterProvidersFromEnv: openRouterProviders,
@@ -2165,6 +2183,7 @@ export async function runCli(
         env: {
           hasXaiKey: Boolean(xaiApiKey),
           hasOpenAIKey: Boolean(apiKey),
+          hasOpenRouterKey: Boolean(openrouterApiKey),
           hasApifyToken: Boolean(apifyToken),
           hasFirecrawlKey: firecrawlConfigured,
           hasGoogleKey: googleConfigured,
@@ -2992,6 +3011,7 @@ export async function runCli(
           env: {
             hasXaiKey: Boolean(xaiApiKey),
             hasOpenAIKey: Boolean(apiKey),
+            hasOpenRouterKey: Boolean(openrouterApiKey),
             hasApifyToken: Boolean(apifyToken),
             hasFirecrawlKey: firecrawlConfigured,
             hasGoogleKey: googleConfigured,
@@ -3072,6 +3092,7 @@ export async function runCli(
           env: {
             hasXaiKey: Boolean(xaiApiKey),
             hasOpenAIKey: Boolean(apiKey),
+            hasOpenRouterKey: Boolean(openrouterApiKey),
             hasApifyToken: Boolean(apifyToken),
             hasFirecrawlKey: firecrawlConfigured,
             hasGoogleKey: googleConfigured,
@@ -3149,6 +3170,7 @@ export async function runCli(
           env: {
             hasXaiKey: Boolean(xaiApiKey),
             hasOpenAIKey: Boolean(apiKey),
+            hasOpenRouterKey: Boolean(openrouterApiKey),
             hasApifyToken: Boolean(apifyToken),
             hasFirecrawlKey: firecrawlConfigured,
             hasGoogleKey: googleConfigured,
@@ -3192,7 +3214,7 @@ export async function runCli(
           promptTokens,
           desiredOutputTokens,
           requiresVideoUnderstanding: false,
-          env,
+          env: envForAuto,
           config,
           catalog,
           openrouterProvidersFromEnv: openRouterProviders,
@@ -3315,6 +3337,7 @@ export async function runCli(
           env: {
             hasXaiKey: Boolean(xaiApiKey),
             hasOpenAIKey: Boolean(apiKey),
+            hasOpenRouterKey: Boolean(openrouterApiKey),
             hasApifyToken: Boolean(apifyToken),
             hasFirecrawlKey: firecrawlConfigured,
             hasGoogleKey: googleConfigured,
@@ -3362,6 +3385,7 @@ export async function runCli(
         env: {
           hasXaiKey: Boolean(xaiApiKey),
           hasOpenAIKey: Boolean(apiKey),
+          hasOpenRouterKey: Boolean(openrouterApiKey),
           hasApifyToken: Boolean(apifyToken),
           hasFirecrawlKey: firecrawlConfigured,
           hasGoogleKey: googleConfigured,

@@ -13,6 +13,17 @@ const noopStream = () =>
   })
 
 describe('cli missing API key errors', () => {
+  it('errors when --model free is set without OPENROUTER_API_KEY', async () => {
+    await expect(
+      runCli(['--model', 'free', '--timeout', '2s', 'https://example.com'], {
+        env: {},
+        fetch: vi.fn() as unknown as typeof fetch,
+        stdout: noopStream(),
+        stderr: noopStream(),
+      })
+    ).rejects.toThrow(/Missing OPENROUTER_API_KEY/)
+  })
+
   it('errors when --model openai/... is set without OPENAI_API_KEY', async () => {
     const html = `<!doctype html><html><head><title>Ok</title></head><body><article><p>${'A'.repeat(
       260
