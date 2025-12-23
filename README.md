@@ -100,6 +100,7 @@ npx -y @steipete/summarize "https://example.com" --length 20k
 - Character targets: `1500`, `20k`, `20000`
 - Optional hard cap: `--max-output-tokens <count>` (e.g. `2000`, `2k`)
   - Provider/model APIs still enforce their own maximum output limits.
+  - OpenRouter: not sent as an API `max_tokens` cap (some providers count “reasoning” into the cap and can return empty content). Used only for planning/selection.
 - Minimums: `--length` numeric values must be ≥ 50 chars; `--max-output-tokens` must be ≥ 16.
 
 ## Limits
@@ -119,7 +120,7 @@ npx -y @steipete/summarize <input> [flags]
 - `--timeout <duration>`: `30s`, `2m`, `5000ms` (default `2m`)
 - `--retries <count>`: LLM retry attempts on timeout (default `1`)
 - `--length short|medium|long|xl|xxl|<chars>`
-- `--max-output-tokens <count>`: hard cap for LLM output tokens (optional)
+- `--max-output-tokens <count>`: hard cap for LLM output tokens (optional; ignored for OpenRouter calls)
 - `--cli [provider]`: use a CLI provider (case-insensitive; equivalent to `--model cli/<provider>`). If omitted, uses auto selection with CLI enabled.
 - `--stream auto|on|off`: stream LLM output (`auto` = TTY only; disabled in `--json` mode)
 - `--render auto|md-live|md|plain`: Markdown rendering (`auto` = best default for TTY)

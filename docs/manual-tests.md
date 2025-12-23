@@ -24,7 +24,7 @@ Tip: use `--verbose` to see model attempts + the chosen model.
 ## Free mode
 
 - Free-only OpenRouter (`--model free` or `--model 3`):
-  - `summarize --model free --max-output-tokens 200 https://example.com`
+- `summarize --model free --max-output-tokens 200 https://example.com` (note: OpenRouter ignores the hard cap)
 - No `OPENROUTER_API_KEY` (should print extracted text; footer should mention extraction + “no model”):
   - Unset `OPENROUTER_API_KEY` then rerun.
 

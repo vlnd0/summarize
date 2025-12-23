@@ -33,7 +33,7 @@ installed, auto mode can use local CLI models when `cli.enabled` is set (see `do
     - `xai/grok-4-fast-non-reasoning`
     - `google/gemini-2.0-flash`
     - `anthropic/claude-sonnet-4-5`
-    - `openrouter/meta-llama/llama-3.1-8b-instruct:free` (force OpenRouter)
+    - `openrouter/meta-llama/llama-3.3-70b-instruct:free` (force OpenRouter)
 - `--cli [provider]`
   - Examples: `--cli claude`, `--cli Gemini`, `--cli codex` (equivalent to `--model cli/<provider>`); `--cli` alone uses auto selection with CLI enabled.
 - `--model auto`
@@ -45,7 +45,7 @@ installed, auto mode can use local CLI models when `cli.enabled` is set (see `do
 - `--length short|medium|long|xl|xxl|<chars>`
   - This is *soft guidance* to the model (no hard truncation).
   - Minimum numeric value: 50 chars.
-- `--max-output-tokens <count>`
+- `--max-output-tokens <count>` (ignored for OpenRouter calls; used only for planning/selection)
   - Hard cap for output tokens (optional).
   - Minimum numeric value: 16.
 - `--retries <count>`
