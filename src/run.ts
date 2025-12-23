@@ -2186,7 +2186,17 @@ export async function runCli(
 
     if (!summaryResult || !usedAttempt) {
       if (requestedModel.kind === 'free') {
-        if (lastError instanceof Error) throw lastError
+        if (lastError instanceof Error) {
+          if (
+            /No allowed providers are available for the selected model/i.test(lastError.message)
+          ) {
+            throw new Error(
+              'OpenRouter could not route any :free models with this API key (no allowed providers). Try a different OpenRouter key, or use --model auto.',
+              { cause: lastError }
+            )
+          }
+          throw lastError
+        }
         throw new Error('No model available for --model free')
       }
       if (textContent) {
@@ -3375,7 +3385,17 @@ export async function runCli(
 
     if (!summaryResult || !usedAttempt) {
       if (requestedModel.kind === 'free') {
-        if (lastError instanceof Error) throw lastError
+        if (lastError instanceof Error) {
+          if (
+            /No allowed providers are available for the selected model/i.test(lastError.message)
+          ) {
+            throw new Error(
+              'OpenRouter could not route any :free models with this API key (no allowed providers). Try a different OpenRouter key, or use --model auto.',
+              { cause: lastError }
+            )
+          }
+          throw lastError
+        }
         throw new Error('No model available for --model free')
       }
       clearProgressForStdout()
