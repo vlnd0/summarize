@@ -163,7 +163,12 @@ Notes:
 ```json
 {
   "openai": {
-    "useChatCompletions": true
+    "useChatCompletions": true,
+    "whisperUsdPerMinute": 0.006
   }
 }
 ```
+
+Notes:
+
+- `openai.whisperUsdPerMinute` is only used to estimate transcription cost in the finish-line metrics when Whisper transcription runs via OpenAI.
