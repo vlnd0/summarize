@@ -83,6 +83,7 @@ Examples:
 - `anthropic/claude-sonnet-4-5`
 - `xai/grok-4-fast-non-reasoning`
 - `google/gemini-3-flash-preview`
+- `zai/glm-4.7`
 - `openrouter/openai/gpt-5-mini` (force OpenRouter)
 
 Note: some models/providers don’t support streaming or certain file media types. When that happens, the CLI prints a friendly error (or auto-disables streaming for that model when supported by the provider).
@@ -217,6 +218,7 @@ Also supported:
 - `model.rules` (customize candidates / ordering)
 - `models` (define presets selectable via `--model <preset>`)
 - `media.videoMode: "auto"|"transcript"|"understand"`
+- `openai.useChatCompletions: true` (force OpenAI-compatible chat completions)
 
 Note: the config is parsed leniently (JSON5), but **comments are not allowed**.
 Unknown keys are ignored.
@@ -235,8 +237,13 @@ Set the key matching your chosen `--model`:
 - `OPENAI_API_KEY` (for `openai/...`)
 - `ANTHROPIC_API_KEY` (for `anthropic/...`)
 - `XAI_API_KEY` (for `xai/...`)
+- `Z_AI_API_KEY` (for `zai/...`; supports `ZAI_API_KEY` alias)
 - `GEMINI_API_KEY` (for `google/...`)  
   - also accepts `GOOGLE_GENERATIVE_AI_API_KEY` and `GOOGLE_API_KEY` as aliases
+
+OpenAI-compatible chat completions toggle:
+
+- `OPENAI_USE_CHAT_COMPLETIONS=1` (or set `openai.useChatCompletions` in config)
 
 OpenRouter (OpenAI-compatible):
 
@@ -291,6 +298,11 @@ If your OpenRouter account enforces an allowed-provider list, make sure at least
 is allowed for the selected model. (When routing fails, `summarize` prints the exact providers to allow.)
 
 Legacy: `OPENAI_BASE_URL=https://openrouter.ai/api/v1` (and either `OPENAI_API_KEY` or `OPENROUTER_API_KEY`) also works.
+
+Z.AI (OpenAI-compatible):
+
+- `Z_AI_API_KEY=...` (or `ZAI_API_KEY=...`)
+- Optional base URL override: `Z_AI_BASE_URL=...`
 
 Optional services:
 

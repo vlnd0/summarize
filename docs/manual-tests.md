@@ -9,6 +9,7 @@ Goal: sanity-check auto selection + presets end-to-end.
 - `ANTHROPIC_API_KEY=...` (optional)
 - `XAI_API_KEY=...` (optional)
 - `OPENROUTER_API_KEY=...` (optional)
+- `Z_AI_API_KEY=...` (optional)
 
 Tip: use `--verbose` to see model attempts + the chosen model.
 
@@ -38,3 +39,7 @@ Tip: use `--verbose` to see model attempts + the chosen model.
   - `summarize https://www.youtube.com/watch?v=dQw4w9WgXcQ --max-output-tokens 200`
 - Local video understanding (requires Gemini video-capable model; otherwise expect an error or transcript-only behavior depending on input):
   - `summarize ./path/to/video.mp4 --max-output-tokens 200`
+
+## Z.AI
+
+- `summarize --model zai/glm-4.7 --max-output-tokens 200 https://example.com`

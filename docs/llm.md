@@ -14,7 +14,10 @@ installed, auto mode can use local CLI models when `cli.enabled` is set (see `do
 - `XAI_API_KEY` (required for `xai/...` models)
 - `OPENAI_API_KEY` (required for `openai/...` models)
 - `OPENAI_BASE_URL` (optional; OpenAI-compatible API endpoint, e.g. OpenRouter)
+- `OPENAI_USE_CHAT_COMPLETIONS` (optional; force OpenAI chat completions)
 - `OPENROUTER_API_KEY` (optional; required for `openrouter/...` models; also used when `OPENAI_BASE_URL` points to OpenRouter)
+- `Z_AI_API_KEY` (required for `zai/...` models; supports `ZAI_API_KEY` alias)
+- `Z_AI_BASE_URL` (optional; override default Z.AI base URL)
 - `GEMINI_API_KEY` (required for `google/...` models; also accepts `GOOGLE_GENERATIVE_AI_API_KEY` / `GOOGLE_API_KEY`)
 - `ANTHROPIC_API_KEY` (required for `anthropic/...` models)
 - `SUMMARIZE_MODEL` (optional; overrides default model selection)
@@ -29,6 +32,7 @@ installed, auto mode can use local CLI models when `cli.enabled` is set (see `do
     - `cli/gemini/gemini-3-flash-preview`
     - `google/gemini-3-flash-preview`
     - `openai/gpt-5-mini`
+    - `zai/glm-4.7`
     - `xai/grok-4-fast-non-reasoning`
     - `google/gemini-2.0-flash`
     - `anthropic/claude-sonnet-4-5`
@@ -53,6 +57,10 @@ installed, auto mode can use local CLI models when `cli.enabled` is set (see `do
 - `--retries <count>`
   - LLM retry attempts on timeout (default: 1).
 - `--json` (includes prompt + summary in one JSON object)
+
+## Z.AI
+
+Use `--model zai/<model>` (e.g. `zai/glm-4.7`). Defaults to Z.AI’s base URL and uses chat completions.
 
 ## Input limits
 

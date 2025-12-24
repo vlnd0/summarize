@@ -7,6 +7,7 @@ For the full model/provider matrix, see `docs/llm.md`.
 ## Env
 
 - `OPENAI_API_KEY` (required for `openai/...` models)
+- `OPENAI_USE_CHAT_COMPLETIONS` (optional; force chat completions)
 
 ## Flags
 

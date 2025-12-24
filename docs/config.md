@@ -148,3 +148,13 @@ Notes:
 - Recommendation: keep `cli.enabled` to `["gemini"]` unless you have a reason to add others (extra latency/variance).
 - `cli.<provider>.binary` overrides CLI binary discovery.
 - `cli.<provider>.extraArgs` appends extra CLI args.
+
+## OpenAI config
+
+```json
+{
+  "openai": {
+    "useChatCompletions": true
+  }
+}
+```

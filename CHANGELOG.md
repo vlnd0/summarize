@@ -2,7 +2,10 @@
 
 ## 0.5.1 - Unreleased
 
-- TBD
+- Add `zai/...` model alias with Z.AI base URL + chat completions by default.
+- Add `OPENAI_USE_CHAT_COMPLETIONS` + `openai.useChatCompletions` config toggle.
+- Add Z.AI live test coverage.
+- Document Z.AI + chat-completions toggle in README/docs.
 
 ## 0.5.0 - 2025-12-24
 
