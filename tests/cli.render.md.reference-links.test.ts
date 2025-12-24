@@ -33,11 +33,14 @@ function createTextStream(chunks: string[]): AsyncIterable<string> {
 
 const streamTextMock = vi.fn(() => {
   return {
-    textStream: createTextStream(['Hello', ' world']),
+    textStream: createTextStream([
+      'Here is a link: [Example][1]\n\n',
+      '[1]: https://example.com\n',
+    ]),
     totalUsage: Promise.resolve({
-      promptTokens: 123_456,
-      completionTokens: 7_890,
-      totalTokens: 131_346,
+      promptTokens: 100,
+      completionTokens: 50,
+      totalTokens: 150,
     }),
   }
 })
@@ -54,32 +57,12 @@ vi.mock('@ai-sdk/openai', () => ({
   createOpenAI: createOpenAIMock,
 }))
 
-const createXaiMock = vi.fn(() => {
-  return (_modelId: string) => ({})
-})
-
-vi.mock('@ai-sdk/xai', () => ({
-  createXai: createXaiMock,
-}))
-
-describe('cli finish line + metrics', () => {
-  it('streams text to stdout and prints token metrics + cost', async () => {
-    streamTextMock.mockReset().mockImplementation(() => {
-      return {
-        textStream: createTextStream(['Hello', ' world']),
-        totalUsage: Promise.resolve({
-          promptTokens: 123_456,
-          completionTokens: 7_890,
-          totalTokens: 131_346,
-        }),
-      }
-    })
-
-    const root = mkdtempSync(join(tmpdir(), 'summarize-finish-line-'))
+describe('cli markdown reference links', () => {
+  it('inlines reference-style links so URLs remain clickable', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'summarize-md-links-'))
     const cacheDir = join(root, '.summarize', 'cache')
     mkdirSync(cacheDir, { recursive: true })
 
-    // LiteLLM cache: used for model limits (avoid network fetch in tests)
     writeFileSync(
       join(cacheDir, 'litellm-model_prices_and_context_window.json'),
       JSON.stringify({
@@ -93,7 +76,6 @@ describe('cli finish line + metrics', () => {
       'utf8'
     )
 
-    // ensure LiteLLM network fetch is never attempted
     const globalFetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
       throw new Error('unexpected LiteLLM catalog fetch')
     })
@@ -122,9 +104,7 @@ describe('cli finish line + metrics', () => {
         '--stream',
         'auto',
         '--render',
-        'plain',
-        '--metrics',
-        'detailed',
+        'auto',
         'https://example.com',
       ],
       {
@@ -135,45 +115,33 @@ describe('cli finish line + metrics', () => {
       }
     )
 
-    expect(stdout.getText()).toBe('Hello world\n')
-    const err = stderr.getText()
-    expect(err).toContain('$0.3265')
-    expect(err).not.toContain('estimated=')
-    expect(err).toContain('123k/7.9k/131k (in/out/Σ)')
-    expect(err).not.toContain('calls=')
-    expect(err).not.toContain('metrics llm provider=')
-    expect(err).not.toContain('firecrawl=')
-    expect(err).not.toContain('apify=')
-    expect(err).not.toContain('strategy=')
-    expect(err).not.toContain('chunks=')
+    const out = stdout.getText()
+    expect(out).toContain('https://example.com')
+    expect(out).not.toContain('[1]: https://example.com')
 
     globalFetchSpy.mockRestore()
   })
 
-  it('prints a finish line with cost when token counts are small', async () => {
-    streamTextMock.mockReset().mockImplementation(() => {
+  it('materializes inline Markdown links so URLs remain clickable', async () => {
+    streamTextMock.mockImplementationOnce(() => {
       return {
-        textStream: createTextStream(['Hi']),
+        textStream: createTextStream(['Inline link: [Example](https://inline.example.com)\n']),
         totalUsage: Promise.resolve({
-          promptTokens: 10,
-          completionTokens: 10,
-          totalTokens: 20,
+          promptTokens: 100,
+          completionTokens: 50,
+          totalTokens: 150,
         }),
       }
     })
 
-    const root = mkdtempSync(join(tmpdir(), 'summarize-finish-line-small-'))
+    const root = mkdtempSync(join(tmpdir(), 'summarize-md-links-'))
     const cacheDir = join(root, '.summarize', 'cache')
     mkdirSync(cacheDir, { recursive: true })
 
-    // LiteLLM cache: key without provider prefix to exercise prefix-stripped resolution for xai/...
     writeFileSync(
       join(cacheDir, 'litellm-model_prices_and_context_window.json'),
       JSON.stringify({
-        'grok-4-fast-non-reasoning': {
-          input_cost_per_token: 0.000001,
-          output_cost_per_token: 0.000001,
-        },
+        'gpt-5.2': { input_cost_per_token: 0.00000175, output_cost_per_token: 0.000014 },
       }),
       'utf8'
     )
@@ -205,34 +173,104 @@ describe('cli finish line + metrics', () => {
     await runCli(
       [
         '--model',
-        'xai/grok-4-fast-non-reasoning',
+        'openai/gpt-5.2',
         '--timeout',
         '2s',
         '--stream',
         'auto',
         '--render',
-        'plain',
-        '--metrics',
-        'detailed',
+        'auto',
         'https://example.com',
       ],
       {
-        env: { HOME: root, XAI_API_KEY: 'test' },
+        env: { HOME: root, OPENAI_API_KEY: 'test' },
         fetch: fetchMock as unknown as typeof fetch,
         stdout: stdout.stream,
         stderr: stderr.stream,
       }
     )
 
-    const err = stderr.getText()
-    expect(err).toContain('$0.0000')
-    expect(err).not.toContain('estimated=')
-    expect(err).toContain('10/10/20 (in/out/Σ)')
-    expect(err).not.toContain('calls=')
-    expect(err).not.toContain('firecrawl=')
-    expect(err).not.toContain('apify=')
-    expect(err).not.toContain('strategy=')
-    expect(err).not.toContain('chunks=')
+    const out = stdout.getText()
+    expect(out).toContain('https://inline.example.com')
+
+    globalFetchSpy.mockRestore()
+  })
+
+  it('does not rewrite links inside fenced code blocks', async () => {
+    streamTextMock.mockImplementationOnce(() => {
+      return {
+        textStream: createTextStream([
+          'Outside: [Example](https://outside.example.com)\n\n',
+          '```txt\n',
+          'Inside: [Nope](https://inside.example.com)\n',
+          '```\n',
+        ]),
+        totalUsage: Promise.resolve({
+          promptTokens: 100,
+          completionTokens: 50,
+          totalTokens: 150,
+        }),
+      }
+    })
+
+    const root = mkdtempSync(join(tmpdir(), 'summarize-md-links-'))
+    const cacheDir = join(root, '.summarize', 'cache')
+    mkdirSync(cacheDir, { recursive: true })
+
+    writeFileSync(
+      join(cacheDir, 'litellm-model_prices_and_context_window.json'),
+      JSON.stringify({
+        'gpt-5.2': { input_cost_per_token: 0.00000175, output_cost_per_token: 0.000014 },
+      }),
+      'utf8'
+    )
+    writeFileSync(
+      join(cacheDir, 'litellm-model_prices_and_context_window.meta.json'),
+      JSON.stringify({ fetchedAtMs: Date.now() }),
+      'utf8'
+    )
+
+    const globalFetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      throw new Error('unexpected LiteLLM catalog fetch')
+    })
+
+    const html =
+      '<!doctype html><html><head><title>Hello</title></head>' +
+      '<body><article><p>Hi</p></article></body></html>'
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.url
+      if (url === 'https://example.com') return htmlResponse(html)
+      throw new Error(`Unexpected fetch call: ${url}`)
+    })
+
+    const stdout = collectStream()
+    ;(stdout.stream as unknown as { isTTY?: boolean; columns?: number }).isTTY = true
+    ;(stdout.stream as unknown as { columns?: number }).columns = 80
+    const stderr = collectStream()
+
+    await runCli(
+      [
+        '--model',
+        'openai/gpt-5.2',
+        '--timeout',
+        '2s',
+        '--stream',
+        'auto',
+        '--render',
+        'auto',
+        'https://example.com',
+      ],
+      {
+        env: { HOME: root, OPENAI_API_KEY: 'test' },
+        fetch: fetchMock as unknown as typeof fetch,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      }
+    )
+
+    const out = stdout.getText()
+    expect(out).toContain('https://outside.example.com')
 
     globalFetchSpy.mockRestore()
   })

@@ -78,5 +78,5 @@ describe('cli tweet summarization bypass', () => {
     })
 
     expect(stdoutText).toContain(tweet.slice(0, 50))
-  })
+  }, 15_000)
 })

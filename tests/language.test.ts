@@ -1,20 +1,45 @@
 import { describe, expect, it } from 'vitest'
 
-import { resolveOutputLanguage } from '../src/language.js'
+import { formatOutputLanguageInstruction, parseOutputLanguage } from '../src/language.js'
 
-describe('resolveOutputLanguage', () => {
-  it('defaults to auto', () => {
-    expect(resolveOutputLanguage(null)).toEqual({ tag: 'auto', label: 'auto' })
-    expect(resolveOutputLanguage('')).toEqual({ tag: 'auto', label: 'auto' })
+describe('output language', () => {
+  it('parses auto', () => {
+    expect(parseOutputLanguage('auto')).toEqual({ kind: 'auto' })
   })
 
-  it('supports common shorthands and names', () => {
-    expect(resolveOutputLanguage('auto')).toEqual({ tag: 'auto', label: 'auto' })
-    expect(resolveOutputLanguage('en')).toEqual({ tag: 'en', label: 'English' })
-    expect(resolveOutputLanguage('english')).toEqual({ tag: 'en', label: 'English' })
-    expect(resolveOutputLanguage('de')).toEqual({ tag: 'de', label: 'German' })
-    expect(resolveOutputLanguage('german')).toEqual({ tag: 'de', label: 'German' })
-    expect(resolveOutputLanguage('Deutsch')).toEqual({ tag: 'de', label: 'German' })
-    expect(resolveOutputLanguage('pt-BR')).toEqual({ tag: 'pt-BR', label: 'Portuguese (Brazil)' })
+  it('parses common aliases', () => {
+    expect(parseOutputLanguage('en')).toEqual({ kind: 'fixed', tag: 'en', label: 'English' })
+    expect(parseOutputLanguage('English')).toEqual({ kind: 'fixed', tag: 'en', label: 'English' })
+    expect(parseOutputLanguage('de')).toEqual({ kind: 'fixed', tag: 'de', label: 'German' })
+    expect(parseOutputLanguage('Deutsch')).toEqual({ kind: 'fixed', tag: 'de', label: 'German' })
+    expect(parseOutputLanguage('pt-BR')).toEqual({
+      kind: 'fixed',
+      tag: 'pt-BR',
+      label: 'Portuguese (Brazil)',
+    })
+  })
+
+  it('normalizes BCP-47-ish tags', () => {
+    expect(parseOutputLanguage('EN-us')).toEqual({ kind: 'fixed', tag: 'en-US', label: 'en-US' })
+  })
+
+  it('keeps natural language hints', () => {
+    expect(parseOutputLanguage('German, formal')).toEqual({
+      kind: 'fixed',
+      tag: 'German, formal',
+      label: 'German, formal',
+    })
+  })
+
+  it('formats prompt instruction', () => {
+    expect(formatOutputLanguageInstruction({ kind: 'auto' })).toMatch(/primary language/i)
+    expect(formatOutputLanguageInstruction({ kind: 'fixed', tag: 'en', label: 'English' })).toBe(
+      'Write the answer in English.'
+    )
+  })
+
+  it('rejects empty', () => {
+    expect(() => parseOutputLanguage('  ')).toThrow(/must not be empty/i)
   })
 })
+

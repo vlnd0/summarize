@@ -159,4 +159,30 @@ describe('cli stream chunk merge', () => {
     })
     expect(out).toBe('Hello world!\n')
   })
+
+  it('ignores regressions where a later chunk is a shorter prefix', async () => {
+    const out = await runStreamedSummary(['Hello world', 'Hello'], {
+      render: 'md',
+      stdoutIsTty: true,
+    })
+    expect(out).toBe('Hello world\n')
+  })
+
+  it('merges overlapping suffix/prefix chunks without duplication', async () => {
+    const out = await runStreamedSummary(['Hello world', 'world!'], {
+      render: 'md',
+      stdoutIsTty: true,
+    })
+    expect(out).toBe('Hello world!\n')
+  })
+
+  it('treats near-prefix edits as replacements (prefix threshold)', async () => {
+    const prev = 'abcdefghijklmnopqrst'
+    const next = 'abcdefghijklmnopqrsu'
+    const out = await runStreamedSummary([prev, next], {
+      render: 'md',
+      stdoutIsTty: true,
+    })
+    expect(out).toBe(`${next}\n`)
+  })
 })

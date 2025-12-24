@@ -59,6 +59,19 @@ describe('config loading', () => {
     })
   })
 
+  it('supports output.language', () => {
+    const { root } = writeJsonConfig({
+      model: { id: 'openai/gpt-5-mini' },
+      output: { language: 'de' },
+    })
+
+    const result = loadSummarizeConfig({ env: { HOME: root } })
+    expect(result.config).toEqual({
+      model: { id: 'openai/gpt-5-mini' },
+      output: { language: 'de' },
+    })
+  })
+
   it('supports model shorthand strings ("auto", preset, provider/model)', () => {
     const { root, configPath } = writeJsonConfig({ model: 'auto' })
     expect(loadSummarizeConfig({ env: { HOME: root } }).config).toEqual({ model: { mode: 'auto' } })

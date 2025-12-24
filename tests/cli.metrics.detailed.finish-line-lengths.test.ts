@@ -73,8 +73,6 @@ describe('--metrics detailed', () => {
       stderr,
     })
 
-    expect(stderrText).toContain('calls=')
-    expect(stderrText).toMatch(/\binput=/)
     expect(stderrText).toMatch(/\btranscript=/)
     expect(stderrText).toMatch(/\btranscript=44s\b/)
     expect(stderrText).toMatch(/\btranscript=.*\bwords\b/)

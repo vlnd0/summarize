@@ -1,0 +1,24 @@
+import { describe, expect, it, vi } from 'vitest'
+
+import { fetchTranscript } from '../src/content/link-preview/transcript/providers/podcast.js'
+
+describe('podcast transcript provider - invalid URL branches', () => {
+  it('handles invalid URLs gracefully and returns no-enclosure metadata', async () => {
+    const result = await fetchTranscript(
+      { url: 'not a url', html: null, resourceKey: null },
+      {
+        fetch: vi.fn() as any,
+        scrapeWithFirecrawl: null,
+        apifyApiToken: null,
+        youtubeTranscriptMode: 'auto',
+        ytDlpPath: null,
+        falApiKey: null,
+        openaiApiKey: 'OPENAI',
+        onProgress: null,
+      }
+    )
+    expect(result.text).toBeNull()
+    expect(result.metadata?.reason).toBe('no_enclosure_and_no_yt_dlp')
+  })
+})
+
