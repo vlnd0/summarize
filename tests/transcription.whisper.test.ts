@@ -339,9 +339,24 @@ describe('transcription/whisper', () => {
       expect(result.text).toContain('T:part-001.mp3')
       expect(result.text).toContain('\n\n')
       expect(result.notes.join(' ')).toContain('ffmpeg chunked media into 2 parts')
-      expect(onProgress).toHaveBeenCalledWith({ done: 0, total: 2 })
-      expect(onProgress).toHaveBeenCalledWith({ done: 1, total: 2 })
-      expect(onProgress).toHaveBeenCalledWith({ done: 2, total: 2 })
+      expect(onProgress).toHaveBeenCalledWith({
+        partIndex: null,
+        parts: 2,
+        processedDurationSeconds: null,
+        totalDurationSeconds: null,
+      })
+      expect(onProgress).toHaveBeenCalledWith({
+        partIndex: 1,
+        parts: 2,
+        processedDurationSeconds: null,
+        totalDurationSeconds: null,
+      })
+      expect(onProgress).toHaveBeenCalledWith({
+        partIndex: 2,
+        parts: 2,
+        processedDurationSeconds: null,
+        totalDurationSeconds: null,
+      })
     } finally {
       vi.unstubAllGlobals()
       vi.doUnmock('node:child_process')
