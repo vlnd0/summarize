@@ -9,9 +9,9 @@ import {
 } from './article.js'
 import { normalizeForPrompt } from './cleaner.js'
 import { fetchHtmlDocument, fetchWithFirecrawl } from './fetcher.js'
+import { extractJsonLdContent } from './jsonld.js'
 import { extractMetadataFromFirecrawl, extractMetadataFromHtml } from './parsers.js'
 import { extractReadabilityFromHtml, toReadabilityHtml } from './readability.js'
-import { extractJsonLdContent } from './jsonld.js'
 import type { ExtractedLinkContent, FetchLinkContentOptions, MarkdownMode } from './types.js'
 import {
   appendNote,
