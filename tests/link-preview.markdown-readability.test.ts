@@ -15,9 +15,7 @@ describe('link preview extraction (readability markdown)', () => {
       <article><h1>Hello</h1><p>Readable content</p></article>
     </body></html>`
 
-    const convertHtmlToMarkdownMock = vi.fn(
-      async () => '# Hello\n\nReadable content'
-    )
+    const convertHtmlToMarkdownMock = vi.fn(async () => '# Hello\n\nReadable content')
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.url

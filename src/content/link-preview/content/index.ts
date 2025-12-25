@@ -10,6 +10,7 @@ import {
 import { normalizeForPrompt } from './cleaner.js'
 import { fetchHtmlDocument, fetchWithFirecrawl } from './fetcher.js'
 import { extractMetadataFromFirecrawl, extractMetadataFromHtml } from './parsers.js'
+import { extractReadabilityFromHtml, toReadabilityHtml } from './readability.js'
 import type { ExtractedLinkContent, FetchLinkContentOptions, MarkdownMode } from './types.js'
 import {
   appendNote,
@@ -25,7 +26,6 @@ import {
 } from './utils.js'
 import { detectPrimaryVideoFromHtml } from './video.js'
 import { extractYouTubeShortDescription } from './youtube.js'
-import { extractReadabilityFromHtml, toReadabilityHtml } from './readability.js'
 
 const LEADING_CONTROL_PATTERN = /^[\\s\\p{Cc}]+/u
 const BLOCKED_HTML_HINT_PATTERN =
@@ -473,7 +473,9 @@ export async function fetchLinkContent(
 
   if (firecrawlMode === 'auto' && shouldFallbackToFirecrawl(html)) {
     readabilityCandidate = await extractReadabilityFromHtml(html, url)
-    const readabilityText = readabilityCandidate?.text ? normalizeForPrompt(readabilityCandidate.text) : ''
+    const readabilityText = readabilityCandidate?.text
+      ? normalizeForPrompt(readabilityCandidate.text)
+      : ''
     if (readabilityText.length < MIN_READABILITY_CONTENT_CHARACTERS) {
       const firecrawlResult = await attemptFirecrawl(
         'HTML content looked blocked/thin; falling back to Firecrawl'
@@ -647,7 +649,9 @@ async function buildResultFromHtmlDocument({
 
   const youtubeDescription =
     transcriptResolution.text === null ? extractYouTubeShortDescription(html) : null
-  const baseCandidate = youtubeDescription ? normalizeForPrompt(youtubeDescription) : effectiveNormalized
+  const baseCandidate = youtubeDescription
+    ? normalizeForPrompt(youtubeDescription)
+    : effectiveNormalized
 
   let baseContent = selectBaseContent(baseCandidate, transcriptResolution.text)
   if (baseContent === normalized) {

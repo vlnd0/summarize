@@ -95,7 +95,8 @@ export async function extractEmbeddedYouTubeUrlFromHtml(
     const normalizedText = rawText.replace(/\s+/g, ' ').trim()
 
     const readabilityText = await extractReadabilityText(html)
-    const effectiveLength = readabilityText.length > 0 ? readabilityText.length : normalizedText.length
+    const effectiveLength =
+      readabilityText.length > 0 ? readabilityText.length : normalizedText.length
     const threshold = readabilityText.length > 0 ? maxReadabilityChars : maxTextChars
     if (effectiveLength > threshold) return null
 

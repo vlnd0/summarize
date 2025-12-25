@@ -38,7 +38,13 @@ export function parseFirecrawlMode(raw: string): FirecrawlMode {
 
 export function parseMarkdownMode(raw: string): MarkdownMode {
   const normalized = raw.trim().toLowerCase()
-  if (normalized === 'off' || normalized === 'auto' || normalized === 'llm' || normalized === 'readability') return normalized
+  if (
+    normalized === 'off' ||
+    normalized === 'auto' ||
+    normalized === 'llm' ||
+    normalized === 'readability'
+  )
+    return normalized
   throw new Error(`Unsupported --markdown-mode: ${raw}`)
 }
 

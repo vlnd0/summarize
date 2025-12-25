@@ -45,7 +45,9 @@ export const resolveTranscriptForLink = async (
 ): Promise<TranscriptResolution> => {
   const normalizedUrl = url.trim()
   const embeddedYoutubeUrl =
-    !isYouTubeUrlInternal(normalizedUrl) && html ? await extractEmbeddedYouTubeUrlFromHtml(html) : null
+    !isYouTubeUrlInternal(normalizedUrl) && html
+      ? await extractEmbeddedYouTubeUrlFromHtml(html)
+      : null
   const effectiveUrl = embeddedYoutubeUrl ?? normalizedUrl
   const resourceKey = extractResourceKey(effectiveUrl)
   const baseContext: ProviderContext = { url: effectiveUrl, html, resourceKey }
