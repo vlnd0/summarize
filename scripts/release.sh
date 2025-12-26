@@ -4,6 +4,9 @@ set -euo pipefail
 # summarize release helper (npm)
 # Phases: gates | build | publish | smoke | tag | all
 
+# npm@11 warns on unknown env configs; keep CI/logs clean.
+unset npm_config_manage_package_manager_versions || true
+
 PHASE="${1:-all}"
 
 banner() {
@@ -49,7 +52,7 @@ phase_publish() {
   banner "Publish to npm"
   require_clean_git
   require_lockstep_versions
-  run pnpm -C packages/core publish --tag latest --access public
+  run bash -c 'cd packages/core && pnpm publish --tag latest --access public'
   run pnpm publish --tag latest --access public
 }
 
