@@ -39,7 +39,10 @@ function resolveChromeCookiesPath(profile?: string): { path: string; profile: st
         }
         return a.localeCompare(b)
       })
-    const fallbackCandidates = [...profileCandidates, ...candidates.filter((n) => !n.startsWith('Profile '))]
+    const fallbackCandidates = [
+      ...profileCandidates,
+      ...candidates.filter((n) => !n.startsWith('Profile ')),
+    ]
 
     for (const name of fallbackCandidates) {
       const candidate = join(root, name, 'Cookies')

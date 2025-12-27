@@ -10,7 +10,7 @@ export async function fetchWithTimeout(
   timeoutMs: number = DEFAULT_TIMEOUT_MS
 ): Promise<Response> {
   if (init?.signal) {
-    return fetchImpl(input, init ?? {})
+    return fetchImpl(input, init)
   }
 
   const controller = new AbortController()

@@ -9,10 +9,7 @@ const ENV_COOKIE_SOURCE_KEYS = ['TWITTER_COOKIE_SOURCE']
 const ENV_CHROME_PROFILE_KEYS = ['TWITTER_CHROME_PROFILE']
 const ENV_FIREFOX_PROFILE_KEYS = ['TWITTER_FIREFOX_PROFILE']
 
-function parseCookieSourceList(
-  value: string,
-  warnings: string[]
-): CookieSource[] | undefined {
+function parseCookieSourceList(value: string, warnings: string[]): CookieSource[] | undefined {
   const tokens = value
     .split(/[,\s]+/)
     .map((entry) => entry.trim().toLowerCase())
