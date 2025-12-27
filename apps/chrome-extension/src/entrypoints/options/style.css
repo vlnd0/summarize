@@ -46,10 +46,34 @@ main {
   padding: 24px 18px 40px;
 }
 
-h1 {
+.top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
   margin: 0 0 16px;
+}
+
+h1 {
+  margin: 0;
   font-size: 18px;
   letter-spacing: 0.2px;
+}
+
+.docsLink {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.docsLink:hover {
+  border-color: rgba(122, 228, 243, 0.6);
+  color: var(--text);
 }
 
 form {
