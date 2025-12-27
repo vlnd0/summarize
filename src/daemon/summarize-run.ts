@@ -2,9 +2,11 @@ import { execFile } from 'node:child_process'
 import { Writable } from 'node:stream'
 
 import type { OutputLanguage } from '../language.js'
+import { resolveOutputLanguage } from '../language.js'
 import { parseGatewayStyleModelId } from '../llm/model-id.js'
 import { buildAutoModelAttempts } from '../model-auto.js'
 import type { FixedModelSpec } from '../model-spec.js'
+import type { SummaryLengthTarget } from '../prompts/index.js'
 import { parseCliUserModelId } from '../run/env.js'
 import { runModelAttempts } from '../run/model-attempts.js'
 import { resolveConfigState } from '../run/run-config.js'
@@ -15,11 +17,13 @@ import { resolveDesiredOutputTokens } from '../run/run-output.js'
 import { createSummaryEngine } from '../run/summary-engine.js'
 import type { ModelAttempt } from '../run/types.js'
 
+import { resolveDaemonOutputLanguage, resolveDaemonSummaryLength } from './request-settings.js'
 import type { StreamSink } from './summarize.js'
 
 export type DaemonRunContext = {
   envForRun: Record<string, string | undefined>
   outputLanguage: OutputLanguage
+  summaryLength: SummaryLengthTarget
   desiredOutputTokens: number | null
   metrics: ReturnType<typeof createRunMetrics>
   summaryEngine: ReturnType<typeof createSummaryEngine>
@@ -55,11 +59,15 @@ export function createDaemonRunContext({
   env,
   fetchImpl,
   modelOverride,
+  lengthRaw,
+  languageRaw,
   sink,
 }: {
   env: Record<string, string | undefined>
   fetchImpl: typeof fetch
   modelOverride: string | null
+  lengthRaw: unknown
+  languageRaw: unknown
   sink: StreamSink
 }): DaemonRunContext {
   const envForRun = env
@@ -74,7 +82,7 @@ export function createDaemonRunContext({
   } = resolveConfigState({
     envForRun,
     programOpts: { videoMode: 'auto' },
-    languageExplicitlySet: false,
+    languageExplicitlySet: typeof languageRaw === 'string' && Boolean(languageRaw.trim()),
     videoModeExplicitlySet: false,
     cliFlagPresent: false,
     cliProviderArg: null,
@@ -116,7 +124,7 @@ export function createDaemonRunContext({
   const fixedModelSpec: FixedModelSpec | null =
     requestedModel.kind === 'fixed' ? requestedModel : null
 
-  const lengthArg = { kind: 'preset', preset: 'xl' } as const
+  const { lengthArg, summaryLength } = resolveDaemonSummaryLength(lengthRaw)
   const desiredOutputTokens = resolveDesiredOutputTokens({ lengthArg, maxOutputTokensArg: null })
 
   const metrics = createRunMetrics({ env: envForRun, fetchImpl, maxOutputTokensArg: null })
@@ -161,7 +169,11 @@ export function createDaemonRunContext({
 
   return {
     envForRun,
-    outputLanguage,
+    outputLanguage: resolveDaemonOutputLanguage({
+      raw: languageRaw,
+      fallback: outputLanguage ?? resolveOutputLanguage('auto'),
+    }),
+    summaryLength,
     desiredOutputTokens,
     metrics,
     summaryEngine,

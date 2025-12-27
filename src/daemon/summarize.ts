@@ -48,16 +48,27 @@ export async function streamSummaryForVisiblePage({
   fetchImpl,
   input,
   modelOverride,
+  lengthRaw,
+  languageRaw,
   sink,
 }: {
   env: Record<string, string | undefined>
   fetchImpl: typeof fetch
   input: VisiblePageInput
   modelOverride: string | null
+  lengthRaw: unknown
+  languageRaw: unknown
   sink: StreamSink
 }): Promise<{ usedModel: string; metrics: VisiblePageMetrics }> {
   const startedAt = Date.now()
-  const ctx = createDaemonRunContext({ env, fetchImpl, modelOverride, sink })
+  const ctx = createDaemonRunContext({
+    env,
+    fetchImpl,
+    modelOverride,
+    lengthRaw,
+    languageRaw,
+    sink,
+  })
 
   const prompt = buildLinkSummaryPrompt({
     url: input.url,
@@ -67,7 +78,7 @@ export async function streamSummaryForVisiblePage({
     content: input.text,
     truncated: input.truncated,
     hasTranscript: false,
-    summaryLength: 'xl',
+    summaryLength: ctx.summaryLength,
     outputLanguage: ctx.outputLanguage,
     shares: [],
   })
@@ -123,16 +134,27 @@ export async function streamSummaryForUrl({
   fetchImpl,
   input,
   modelOverride,
+  lengthRaw,
+  languageRaw,
   sink,
 }: {
   env: Record<string, string | undefined>
   fetchImpl: typeof fetch
   input: UrlModeInput
   modelOverride: string | null
+  lengthRaw: unknown
+  languageRaw: unknown
   sink: StreamSink
 }): Promise<{ usedModel: string; metrics: VisiblePageMetrics }> {
   const startedAt = Date.now()
-  const ctx = createDaemonRunContext({ env, fetchImpl, modelOverride, sink })
+  const ctx = createDaemonRunContext({
+    env,
+    fetchImpl,
+    modelOverride,
+    lengthRaw,
+    languageRaw,
+    sink,
+  })
 
   const writeStatus = typeof sink.writeStatus === 'function' ? sink.writeStatus : null
   writeStatus?.('Extracting…')
@@ -177,7 +199,7 @@ export async function streamSummaryForUrl({
     content: extracted.content,
     truncated: extracted.truncated,
     hasTranscript,
-    summaryLength: 'xl',
+    summaryLength: ctx.summaryLength,
     outputLanguage: ctx.outputLanguage,
     shares: [],
   })
