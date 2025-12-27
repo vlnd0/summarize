@@ -10,9 +10,12 @@ Goal: Chrome **Side Panel** (“real sidebar”) summarizes **what you see** on 
 
 Quickstart:
 
+- Install summarize (choose one):
+  - `npm i -g @steipete/summarize`
+  - `brew install steipete/tap/summarize` (macOS arm64)
 - Build/load extension: `apps/chrome-extension/README.md`
 - Open side panel → copy token install command → run:
-  - `summarize daemon install --token <TOKEN>`
+  - `summarize daemon install --token <TOKEN>` (LaunchAgent; macOS only)
 - Verify:
   - `summarize daemon status`
   - Restart (if needed): `summarize daemon restart`
@@ -97,7 +100,7 @@ Problem: daemon must be secured; extension must discover and pair with it.
 - Side panel “Setup” state:
   - Generates token (random, 32+ bytes).
   - Shows:
-    - `summarize daemon install --token <TOKEN>`
+    - `summarize daemon install --token <TOKEN>` (LaunchAgent; macOS only)
     - `summarize daemon status`
   - “Copy command” button.
 - Daemon stores token in `~/.summarize/daemon.json`.

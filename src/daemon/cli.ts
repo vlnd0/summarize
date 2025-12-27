@@ -40,6 +40,14 @@ function hasArg(argv: string[], name: string): boolean {
   return argv.includes(name) || argv.some((a) => a.startsWith(`${name}=`))
 }
 
+function assertLaunchdAvailable(command: string) {
+  if (process.platform === 'darwin') return
+  const label = process.platform === 'win32' ? 'Windows' : process.platform
+  throw new Error(
+    `${command} uses launchd and is macOS-only (detected ${label}). No Linux/Windows service support yet.`
+  )
+}
+
 async function waitForHealth({
   fetchImpl,
   port,
@@ -137,6 +145,7 @@ export async function handleDaemonRequest({
   }
 
   if (sub === 'install') {
+    assertLaunchdAvailable('summarize daemon install')
     const token = readArgValue(normalizedArgv, '--token')
     if (!token) throw new Error('Missing --token')
     const portRaw = readArgValue(normalizedArgv, '--port')
@@ -180,6 +189,7 @@ export async function handleDaemonRequest({
   }
 
   if (sub === 'status') {
+    assertLaunchdAvailable('summarize daemon status')
     const cfg = await readDaemonConfig({ env: envForRun })
     if (!cfg) {
       stdout.write('Daemon not installed (missing ~/.summarize/daemon.json)\n')
@@ -206,6 +216,7 @@ export async function handleDaemonRequest({
   }
 
   if (sub === 'restart') {
+    assertLaunchdAvailable('summarize daemon restart')
     const cfg = await readDaemonConfig({ env: envForRun })
     if (!cfg) {
       stdout.write('Daemon not installed (missing ~/.summarize/daemon.json)\n')
@@ -228,6 +239,7 @@ export async function handleDaemonRequest({
   }
 
   if (sub === 'uninstall') {
+    assertLaunchdAvailable('summarize daemon uninstall')
     await uninstallLaunchAgent({ env: envForRun, stdout })
     stdout.write('Uninstalled (LaunchAgent unloaded). Config left in ~/.summarize/daemon.json\n')
     return true

@@ -61,15 +61,18 @@ Docs + setup: `https://summarize.sh`
 
 Quickstart (local daemon):
 
-1) Build + load the extension (unpacked):
+1) Install summarize (choose one):
+   - `npm i -g @steipete/summarize`
+   - `brew install steipete/tap/summarize` (macOS arm64)
+2) Build + load the extension (unpacked):
    - `pnpm -C apps/chrome-extension build`
    - Chrome → `chrome://extensions` → Developer mode → “Load unpacked”
    - Pick: `apps/chrome-extension/.output/chrome-mv3`
-2) Open the Side Panel → it shows a token + install command.
-3) Run the install command in Terminal:
+3) Open the Side Panel → it shows a token + install command.
+4) Run the install command in Terminal:
    - Installed binary: `summarize daemon install --token <TOKEN>`
    - Repo/dev checkout: `pnpm summarize daemon install --token <TOKEN> --dev`
-4) Verify / debug:
+5) Verify / debug:
    - `summarize daemon status`
    - `summarize daemon restart`
 
@@ -78,6 +81,7 @@ Notes:
 - Summarization only runs when the Side Panel is open.
 - “Auto” mode summarizes on navigation (incl. SPAs); otherwise use the button.
 - The daemon is localhost-only and requires a shared token.
+- LaunchAgent install is macOS-only (launchd).
 
 - Docs: `docs/chrome-extension.md`
 - Extension package/dev notes: `apps/chrome-extension/README.md`

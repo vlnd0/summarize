@@ -3,6 +3,7 @@
 Ship is **not done** until:
 - npm is published
 - GitHub Release has the Bun tarball asset
+- GitHub Release has the Chrome extension zip
 - Homebrew tap is bumped + `brew install` verifies
 
 ## Version sources (keep in sync)
@@ -33,14 +34,19 @@ Ship is **not done** until:
    - `pnpm -s build:bun:test`
    - Artifact: `dist-bun/summarize-macos-arm64-v<ver>.tar.gz`
 
-4) Tag
+4) Build Chrome extension artifact
+   - `pnpm -C apps/chrome-extension build`
+   - `mkdir -p dist-chrome`
+   - `zip -r dist-chrome/summarize-chrome-extension-v<ver>.zip apps/chrome-extension/.output/chrome-mv3`
+
+5) Tag
    ```bash
    ver="$(node -p 'require(\"./package.json\").version')"
    git tag -a "v${ver}" -m "v${ver}"
    git push --tags
    ```
 
-5) GitHub Release + asset
+6) GitHub Release + assets
    ```bash
    ver="$(node -p 'require(\"./package.json\").version')"
 
@@ -56,13 +62,15 @@ Ship is **not done** until:
      p { print }
    ' CHANGELOG.md >"/tmp/summarize-v${ver}-notes.md"
 
-   gh release create "v${ver}" "dist-bun/summarize-macos-arm64-v${ver}.tar.gz" \
+   gh release create "v${ver}" \
+     "dist-bun/summarize-macos-arm64-v${ver}.tar.gz" \
+     "dist-chrome/summarize-chrome-extension-v${ver}.zip" \
      --title "v${ver}" \
      --notes-file "/tmp/summarize-v${ver}-notes.md"
    ```
    - Verify notes render (real newlines): `gh release view v<ver> --json body --jq .body`
 
-6) Homebrew tap bump + verify
+7) Homebrew tap bump + verify
    - Repo: `~/Projects/homebrew-tap`
    - Update `Formula/summarize.rb`:
      - `url` → GitHub Release asset URL
@@ -77,7 +85,7 @@ Ship is **not done** until:
      summarize --version
      ```
 
-7) Publish to npm + smoke
+8) Publish to npm + smoke
    - If npm asks for OTP:
      - `npm_config_auth_type=legacy pnpm publish --tag latest --access public --otp <otp>`
    - Otherwise:

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # summarize release helper (npm)
-# Phases: gates | build | publish | smoke | tag | all
+# Phases: gates | build | publish | smoke | tag | chrome | all
 
 # npm@11 warns on unknown env configs; keep CI/logs clean.
 unset npm_config_manage_package_manager_versions || true
@@ -46,6 +46,24 @@ phase_build() {
   banner "Build"
   require_lockstep_versions
   run pnpm build
+  phase_chrome
+}
+
+phase_chrome() {
+  banner "Chrome extension"
+  local version root_dir output_dir zip_path
+  version="$(node -p 'require("./package.json").version')"
+  root_dir="$(pwd)"
+  output_dir="${root_dir}/apps/chrome-extension/.output"
+  zip_path="${root_dir}/dist-chrome/summarize-chrome-extension-v${version}.zip"
+  run pnpm -C apps/chrome-extension build
+  run mkdir -p "${root_dir}/dist-chrome"
+  if [ ! -d "${output_dir}/chrome-mv3" ]; then
+    echo "Missing ${output_dir}/chrome-mv3 (wxt build failed?)"
+    exit 1
+  fi
+  run bash -c "cd \"${output_dir}\" && zip -r -FS \"${zip_path}\" chrome-mv3"
+  echo "Chrome extension: ${zip_path}"
 }
 
 phase_publish() {
@@ -81,6 +99,7 @@ case "$PHASE" in
   publish) phase_publish ;;
   smoke) phase_smoke ;;
   tag) phase_tag ;;
+  chrome) phase_chrome ;;
   all)
     phase_gates
     phase_build
@@ -97,6 +116,7 @@ case "$PHASE" in
     echo "  publish   pnpm publish --tag latest --access public"
     echo "  smoke     npm view + pnpm dlx @steipete/summarize --help"
     echo "  tag       git tag vX.Y.Z + push tags"
+    echo "  chrome    build + zip Chrome extension"
     echo "  all       gates + build + publish + smoke + tag"
     exit 2
     ;;

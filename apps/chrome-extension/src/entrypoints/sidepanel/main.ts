@@ -214,6 +214,22 @@ function applyTypography(fontFamily: string, fontSize: number) {
   document.documentElement.style.setProperty('--font-size', `${fontSize}px`)
 }
 
+type PlatformKind = 'mac' | 'windows' | 'linux' | 'other'
+
+function resolvePlatformKind(): PlatformKind {
+  const nav = navigator as Navigator & { userAgentData?: { platform?: string } }
+  const raw = (nav.userAgentData?.platform ?? navigator.platform ?? navigator.userAgent ?? '')
+    .toLowerCase()
+    .trim()
+
+  if (raw.includes('mac')) return 'mac'
+  if (raw.includes('win')) return 'windows'
+  if (raw.includes('linux') || raw.includes('cros') || raw.includes('chrome os')) return 'linux'
+  return 'other'
+}
+
+const platformKind = resolvePlatformKind()
+
 function friendlyFetchError(err: unknown, context: string): string {
   const message = err instanceof Error ? err.message : String(err)
   if (message.toLowerCase() === 'failed to fetch') {
@@ -230,34 +246,152 @@ async function ensureToken(): Promise<string> {
   return token
 }
 
-function renderSetup(token: string) {
-  setupEl.classList.remove('hidden')
-  const cmd = `summarize daemon install --token ${token}`
-  setupEl.innerHTML = `
-    <h2>Setup</h2>
-    <p>Install the local daemon (LaunchAgent) so the side panel can stream summaries.</p>
-    <code>${cmd}</code>
-    <div class="row">
-      <button id="copy" type="button">Copy Install Command</button>
-      <button id="regen" type="button">Regenerate Token</button>
-    </div>
+function installStepsHtml({
+  token,
+  headline,
+  message,
+  showTroubleshooting,
+}: {
+  token: string
+  headline: string
+  message?: string
+  showTroubleshooting?: boolean
+}) {
+  const npmCmd = 'npm i -g @steipete/summarize'
+  const brewCmd = 'brew install steipete/tap/summarize'
+  const daemonCmd = `summarize daemon install --token ${token}`
+  const isMac = platformKind === 'mac'
+
+  const installIntro = isMac
+    ? `
+      <p><strong>1) Install summarize (choose one)</strong></p>
+      <code>${npmCmd}</code>
+      <code>${brewCmd}</code>
+      <p class="setup__hint">Homebrew installs the daemon-ready binary (macOS arm64).</p>
+    `
+    : `
+      <p><strong>1) Install summarize</strong></p>
+      <code>${npmCmd}</code>
+      <p class="setup__hint">Homebrew + LaunchAgent are macOS-only.</p>
+    `
+
+  const daemonIntro = isMac
+    ? `
+      <p><strong>2) Register the daemon (LaunchAgent)</strong></p>
+      <code>${daemonCmd}</code>
+    `
+    : `
+      <p><strong>2) Daemon auto-start</strong></p>
+      <p class="setup__hint">No Linux/Windows service support yet in summarize.</p>
+    `
+
+  const copyRow = isMac
+    ? `
+      <div class="row">
+        <button id="copy-npm" type="button">Copy npm</button>
+        <button id="copy-brew" type="button">Copy brew</button>
+      </div>
+      <div class="row">
+        <button id="copy-daemon" type="button">Copy daemon</button>
+        <button id="regen" type="button">Regenerate Token</button>
+      </div>
+    `
+    : `
+      <div class="row">
+        <button id="copy-npm" type="button">Copy npm</button>
+        <button id="regen" type="button">Regenerate Token</button>
+      </div>
+    `
+
+  const troubleshooting = showTroubleshooting && isMac
+    ? `
+      <div class="row">
+        <button id="status" type="button">Copy Status Command</button>
+        <button id="restart" type="button">Copy Restart Command</button>
+      </div>
+    `
+    : ''
+
+  return `
+    <h2>${headline}</h2>
+    ${message ? `<p>${message}</p>` : ''}
+    ${installIntro}
+    ${daemonIntro}
+    ${copyRow}
+    ${troubleshooting}
   `
-  const copyBtn = setupEl.querySelector<HTMLButtonElement>('#copy')
-  const regenBtn = setupEl.querySelector<HTMLButtonElement>('#regen')
-  copyBtn?.addEventListener('click', () => {
+}
+
+function wireSetupButtons({
+  token,
+  showTroubleshooting,
+}: {
+  token: string
+  showTroubleshooting?: boolean
+}) {
+  const npmCmd = 'npm i -g @steipete/summarize'
+  const brewCmd = 'brew install steipete/tap/summarize'
+  const daemonCmd = `summarize daemon install --token ${token}`
+
+  const flashCopied = () => {
+    setStatus('Copied')
+    setTimeout(() => setStatus(currentState?.status ?? ''), 800)
+  }
+
+  setupEl.querySelector<HTMLButtonElement>('#copy-npm')?.addEventListener('click', () => {
     void (async () => {
-      await navigator.clipboard.writeText(cmd)
-      setStatus('Copied')
-      setTimeout(() => setStatus(currentState?.status ?? ''), 800)
+      await navigator.clipboard.writeText(npmCmd)
+      flashCopied()
     })()
   })
-  regenBtn?.addEventListener('click', () => {
+
+  setupEl.querySelector<HTMLButtonElement>('#copy-brew')?.addEventListener('click', () => {
+    void (async () => {
+      await navigator.clipboard.writeText(brewCmd)
+      flashCopied()
+    })()
+  })
+
+  setupEl.querySelector<HTMLButtonElement>('#copy-daemon')?.addEventListener('click', () => {
+    void (async () => {
+      await navigator.clipboard.writeText(daemonCmd)
+      flashCopied()
+    })()
+  })
+
+  setupEl.querySelector<HTMLButtonElement>('#regen')?.addEventListener('click', () => {
     void (async () => {
       const token2 = generateToken()
       await patchSettings({ token: token2 })
       renderSetup(token2)
     })()
   })
+
+  if (!showTroubleshooting) return
+
+  setupEl.querySelector<HTMLButtonElement>('#status')?.addEventListener('click', () => {
+    void (async () => {
+      await navigator.clipboard.writeText('summarize daemon status')
+      flashCopied()
+    })()
+  })
+
+  setupEl.querySelector<HTMLButtonElement>('#restart')?.addEventListener('click', () => {
+    void (async () => {
+      await navigator.clipboard.writeText('summarize daemon restart')
+      flashCopied()
+    })()
+  })
+}
+
+function renderSetup(token: string) {
+  setupEl.classList.remove('hidden')
+  setupEl.innerHTML = installStepsHtml({
+    token,
+    headline: 'Setup',
+    message: 'Install summarize, then register the daemon so the side panel can stream summaries.',
+  })
+  wireSetupButtons({ token })
 }
 
 function maybeShowSetup(state: UiState) {
@@ -272,33 +406,15 @@ function maybeShowSetup(state: UiState) {
     setupEl.classList.remove('hidden')
     const token = (async () => (await loadSettings()).token.trim())()
     void token.then((t) => {
-      const cmd = `summarize daemon install --token ${t}`
       setupEl.innerHTML = `
-        <h2>Daemon not reachable</h2>
-        <p>${state.daemon.error ?? 'Check that the LaunchAgent is installed.'}</p>
-        <p>Try:</p>
-        <code>${cmd}</code>
-        <div class="row">
-          <button id="copy" type="button">Copy Install Command</button>
-          <button id="status" type="button">Copy Status Command</button>
-          <button id="restart" type="button">Copy Restart Command</button>
-        </div>
+        ${installStepsHtml({
+          token: t,
+          headline: 'Daemon not reachable',
+          message: state.daemon.error ?? 'Check that the LaunchAgent is installed.',
+          showTroubleshooting: true,
+        })}
       `
-      setupEl.querySelector<HTMLButtonElement>('#copy')?.addEventListener('click', () => {
-        void (async () => {
-          await navigator.clipboard.writeText(cmd)
-        })()
-      })
-      setupEl.querySelector<HTMLButtonElement>('#status')?.addEventListener('click', () => {
-        void (async () => {
-          await navigator.clipboard.writeText('summarize daemon status')
-        })()
-      })
-      setupEl.querySelector<HTMLButtonElement>('#restart')?.addEventListener('click', () => {
-        void (async () => {
-          await navigator.clipboard.writeText('summarize daemon restart')
-        })()
-      })
+      wireSetupButtons({ token: t, showTroubleshooting: true })
     })
     return
   }

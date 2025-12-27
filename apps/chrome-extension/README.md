@@ -17,5 +17,8 @@ Docs + setup: `https://summarize.sh`
 
 ## First Run (Pairing)
 
+- Install summarize (choose one):
+  - `npm i -g @steipete/summarize`
+  - `brew install steipete/tap/summarize` (macOS arm64)
 - Open side panel → “Setup” shows a token + install command.
-- Run the command in Terminal (installs LaunchAgent + daemon).
+- Run the command in Terminal (installs LaunchAgent + daemon, macOS only).
