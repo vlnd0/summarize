@@ -6,6 +6,7 @@ type PanelToBg =
   | { type: 'panel:ready' }
   | { type: 'panel:summarize' }
   | { type: 'panel:ping' }
+  | { type: 'panel:closed' }
   | { type: 'panel:rememberUrl'; url: string }
   | { type: 'panel:setAuto'; value: boolean }
   | { type: 'panel:setModel'; value: string }
@@ -45,6 +46,43 @@ function canSummarizeUrl(url: string | undefined): url is string {
   if (url.startsWith('edge://')) return false
   if (url.startsWith('about:')) return false
   return true
+}
+
+function isYoutubeVideoUrl(url: string): boolean {
+  try {
+    const u = new URL(url)
+    const host = u.hostname.toLowerCase()
+    if (host === 'youtu.be') return Boolean(u.pathname.split('/').filter(Boolean)[0])
+    if (!host.endsWith('youtube.com')) return false
+
+    if (u.pathname === '/watch') return Boolean(u.searchParams.get('v')?.trim())
+    if (u.pathname.startsWith('/shorts/')) return true
+    if (u.pathname.startsWith('/live/')) return true
+    if (u.pathname.startsWith('/embed/')) return true
+
+    return false
+  } catch {
+    return false
+  }
+}
+
+function isTwitterStatusUrl(url: string): boolean {
+  try {
+    const u = new URL(url)
+    const host = u.hostname.toLowerCase()
+    if (host !== 'x.com' && host !== 'twitter.com') return false
+    return /\/status\/\d+/i.test(u.pathname)
+  } catch {
+    return false
+  }
+}
+
+function isDirectMediaUrl(url: string): boolean {
+  return /\.(mp4|mov|m4v|mkv|webm|mp3|m4a|wav|flac|aac)(\?|#|$)/i.test(url)
+}
+
+function shouldUseUrlMode(url: string): boolean {
+  return isYoutubeVideoUrl(url) || isTwitterStatusUrl(url) || isDirectMediaUrl(url)
 }
 
 async function getActiveTab(): Promise<chrome.tabs.Tab | null> {
@@ -157,21 +195,28 @@ async function extractFromTab(
 }
 
 export default defineBackground(() => {
-  let panelPort: chrome.runtime.Port | null = null
   let panelOpen = false
+  let panelLastPingAt = 0
   let lastSummarizedUrl: string | null = null
   let inflightUrl: string | null = null
   let runController: AbortController | null = null
   let lastNavAt = 0
 
-  const send = (msg: BgToPanel) => {
+  const isPanelOpen = () => {
+    if (!panelOpen) return false
+    if (panelLastPingAt === 0) return true
+    return Date.now() - panelLastPingAt < 45_000
+  }
+
+  const send = async (msg: BgToPanel) => {
+    if (!isPanelOpen()) return
     try {
-      panelPort?.postMessage(msg)
+      await chrome.runtime.sendMessage(msg)
     } catch {
-      // ignore (panel likely reloading / port disconnected)
+      // ignore (panel closed / reloading)
     }
   }
-  const sendStatus = (status: string) => send({ type: 'ui:status', status })
+  const sendStatus = (status: string) => void send({ type: 'ui:status', status })
 
   const emitState = async (status: string) => {
     const settings = await loadSettings()
@@ -179,7 +224,7 @@ export default defineBackground(() => {
     const health = await daemonHealth()
     const authed = settings.token.trim() ? await daemonPing(settings.token.trim()) : { ok: false }
     const state: UiState = {
-      panelOpen,
+      panelOpen: isPanelOpen(),
       daemon: { ok: health.ok, authed: authed.ok, error: health.error ?? authed.error },
       tab: { url: tab?.url ?? null, title: tab?.title ?? null },
       settings: {
@@ -189,11 +234,11 @@ export default defineBackground(() => {
       },
       status,
     }
-    send({ type: 'ui:state', state })
+    void send({ type: 'ui:state', state })
   }
 
   const summarizeActiveTab = async (reason: string) => {
-    if (!panelOpen) return
+    if (!isPanelOpen()) return
 
     const settings = await loadSettings()
     if (reason !== 'manual' && !settings.autoSummarize) return
@@ -207,15 +252,22 @@ export default defineBackground(() => {
 
     runController?.abort()
     runController = new AbortController()
-    sendStatus(`Extracting… (${reason})`)
 
-    const extractedAttempt = await extractFromTab(tab.id, settings.maxChars)
-    if (!extractedAttempt.ok) {
-      send({ type: 'run:error', message: extractedAttempt.error })
-      sendStatus(`Error: ${extractedAttempt.error}`)
-      return
-    }
-    const extracted = extractedAttempt.data
+    const urlMode = shouldUseUrlMode(tab.url)
+    const extracted = urlMode
+      ? ({ ok: true, url: tab.url, title: tab.title ?? null, text: '', truncated: false } as const)
+      : await (async () => {
+          sendStatus(`Extracting… (${reason})`)
+          const extractedAttempt = await extractFromTab(tab.id, settings.maxChars)
+          if (!extractedAttempt.ok) {
+            void send({ type: 'run:error', message: extractedAttempt.error })
+            sendStatus(`Error: ${extractedAttempt.error}`)
+            return null
+          }
+          return extractedAttempt.data
+        })()
+
+    if (!extracted) return
 
     if (
       settings.autoSummarize &&
@@ -242,6 +294,8 @@ export default defineBackground(() => {
           text: extracted.text,
           truncated: extracted.truncated,
           model: settings.model,
+          mode: urlMode ? 'url' : 'page',
+          maxCharacters: urlMode ? settings.maxChars : null,
         }),
         signal: runController.signal,
       })
@@ -253,64 +307,75 @@ export default defineBackground(() => {
     } catch (err) {
       if (runController.signal.aborted) return
       const message = friendlyFetchError(err, 'Daemon request failed')
-      send({ type: 'run:error', message })
+      void send({ type: 'run:error', message })
       sendStatus(`Error: ${message}`)
       inflightUrl = null
       return
     }
 
-    send({
+    void send({
       type: 'run:start',
       run: { id, url: extracted.url, title: extracted.title, model: settings.model, reason },
     })
   }
 
-  chrome.runtime.onConnect.addListener((port) => {
-    if (port.name !== 'panel') return
-    panelPort = port
+  chrome.runtime.onMessage.addListener((msg: PanelToBg, _sender, sendResponse) => {
+    if (!msg || typeof msg !== 'object' || typeof (msg as { type?: unknown }).type !== 'string') {
+      return
+    }
+    const type = (msg as PanelToBg).type
+    if (!type.startsWith('panel:')) return
+
     panelOpen = true
+    if (type === 'panel:ping') panelLastPingAt = Date.now()
 
-    port.onDisconnect.addListener(() => {
-      if (panelPort === port) panelPort = null
-      panelOpen = false
-      runController?.abort()
-      runController = null
-      inflightUrl = null
-    })
-
-    port.onMessage.addListener((msg: PanelToBg) => {
-      switch (msg.type) {
-        case 'panel:ready':
+    switch (type) {
+      case 'panel:ready':
+        panelLastPingAt = Date.now()
+        void emitState('')
+        void summarizeActiveTab('panel-open')
+        break
+      case 'panel:closed':
+        panelOpen = false
+        panelLastPingAt = 0
+        runController?.abort()
+        runController = null
+        inflightUrl = null
+        break
+      case 'panel:summarize':
+        void summarizeActiveTab('manual')
+        break
+      case 'panel:ping':
+        break
+      case 'panel:rememberUrl':
+        lastSummarizedUrl = (msg as { url: string }).url
+        inflightUrl = null
+        break
+      case 'panel:setAuto':
+        void (async () => {
+          await patchSettings({ autoSummarize: (msg as { value: boolean }).value })
           void emitState('')
-          void summarizeActiveTab('panel-open')
-          return
-        case 'panel:summarize':
-          void summarizeActiveTab('manual')
-          return
-        case 'panel:ping':
-          return
-        case 'panel:rememberUrl':
-          lastSummarizedUrl = msg.url
-          inflightUrl = null
-          return
-        case 'panel:setAuto':
-          void (async () => {
-            await patchSettings({ autoSummarize: msg.value })
-            void emitState('')
-            if (msg.value) void summarizeActiveTab('auto-enabled')
-          })()
-          return
-        case 'panel:setModel':
-          void (async () => {
-            await patchSettings({ model: msg.value })
-            void emitState('')
-          })()
-          return
-        case 'panel:openOptions':
-          void chrome.runtime.openOptionsPage()
-          return
-      }
-    })
+          if ((msg as { value: boolean }).value) void summarizeActiveTab('auto-enabled')
+        })()
+        break
+      case 'panel:setModel':
+        void (async () => {
+          await patchSettings({ model: (msg as { value: string }).value })
+          void emitState('')
+        })()
+        break
+      case 'panel:openOptions':
+        void chrome.runtime.openOptionsPage()
+        break
+    }
+
+    try {
+      sendResponse({ ok: true })
+    } catch {
+      // ignore
+    }
+    // keep SW alive for async branches
+    return true
   })
 
   chrome.webNavigation.onHistoryStateUpdated.addListener(() => {

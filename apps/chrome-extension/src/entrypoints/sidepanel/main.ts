@@ -8,6 +8,7 @@ type PanelToBg =
   | { type: 'panel:ready' }
   | { type: 'panel:summarize' }
   | { type: 'panel:ping' }
+  | { type: 'panel:closed' }
   | { type: 'panel:rememberUrl'; url: string }
   | { type: 'panel:setAuto'; value: boolean }
   | { type: 'panel:setModel'; value: string }
@@ -34,8 +35,6 @@ type BgToPanel =
   | { type: 'ui:status'; status: string }
   | { type: 'run:start'; run: RunStart }
   | { type: 'run:error'; message: string }
-
-type PanelToBgType = PanelToBg['type']
 
 function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id)
@@ -73,8 +72,8 @@ let streamedAnyNonWhitespace = false
 let rememberedUrl = false
 let streaming = false
 
-function ensureSelectValue(select: HTMLSelectElement, value: string): string {
-  const normalized = value.trim()
+function ensureSelectValue(select: HTMLSelectElement, value: unknown): string {
+  const normalized = typeof value === 'string' ? value.trim() : ''
   if (!normalized) {
     const fallback = select.options[0]?.value ?? ''
     if (fallback) select.value = fallback
@@ -131,6 +130,26 @@ function queueRender() {
       a.setAttribute('rel', 'noopener noreferrer')
     }
   }, 80)
+}
+
+function mergeStreamText(current: string, incoming: string): string {
+  if (!incoming) return current
+  if (!current) return incoming
+
+  // Some providers stream cumulative buffers; prefer replacement if the incoming chunk contains everything so far.
+  if (incoming.length >= current.length && incoming.startsWith(current)) {
+    return incoming
+  }
+
+  // Overlap-merge to avoid duplicated tails/heads.
+  const maxOverlap = Math.min(current.length, incoming.length, 2000)
+  for (let overlap = maxOverlap; overlap >= 8; overlap -= 1) {
+    if (current.endsWith(incoming.slice(0, overlap))) {
+      return current + incoming.slice(overlap)
+    }
+  }
+
+  return current + incoming
 }
 
 function applyTypography(fontFamily: string, fontSize: number) {
@@ -240,11 +259,6 @@ function updateControls(state: UiState) {
   maybeShowSetup(state)
 }
 
-let port: chrome.runtime.Port | null = null
-let reconnectTimer: number | null = null
-let reconnectAttempt = 0
-const pendingByType = new Map<PanelToBgType, PanelToBg>()
-
 function handleBgMessage(msg: BgToPanel) {
   switch (msg.type) {
     case 'ui:state':
@@ -264,81 +278,9 @@ function handleBgMessage(msg: BgToPanel) {
 }
 
 function send(message: PanelToBg) {
-  try {
-    if (!port) {
-      queueMessage(message)
-      scheduleReconnect()
-      return
-    }
-    port.postMessage(message)
-  } catch {
-    try {
-      port?.disconnect()
-    } catch {
-      // ignore
-    }
-    port = null
-    queueMessage(message)
-    scheduleReconnect()
-  }
-}
-
-function queueMessage(message: PanelToBg) {
-  if (message.type === 'panel:ping') return
-  pendingByType.set(message.type, message)
-}
-
-function flushPending() {
-  if (!port) return
-  const order: PanelToBgType[] = [
-    'panel:ready',
-    'panel:setAuto',
-    'panel:setModel',
-    'panel:rememberUrl',
-    'panel:summarize',
-    'panel:openOptions',
-  ]
-  for (const type of order) {
-    const msg = pendingByType.get(type)
-    if (!msg) continue
-    try {
-      port.postMessage(msg)
-    } catch {
-      return
-    }
-  }
-  pendingByType.clear()
-}
-
-function connectPort() {
-  if (port) return
-  try {
-    port = chrome.runtime.connect({ name: 'panel' })
-  } catch {
-    scheduleReconnect()
-    return
-  }
-
-  reconnectAttempt = 0
-  port.onMessage.addListener(handleBgMessage)
-  port.onDisconnect.addListener(() => {
-    port = null
-    if (!streaming) setStatus('Reconnecting…')
-    scheduleReconnect()
+  void chrome.runtime.sendMessage(message).catch(() => {
+    // ignore (panel/background race while reloading)
   })
-
-  flushPending()
-}
-
-function scheduleReconnect() {
-  if (port) return
-  if (reconnectTimer) return
-  const delayMs = Math.min(250 * 2 ** reconnectAttempt, 3_000)
-  reconnectAttempt = Math.min(reconnectAttempt + 1, 6)
-  reconnectTimer = window.setTimeout(() => {
-    reconnectTimer = null
-    connectPort()
-  }, delayMs)
 }
 
 function toggleDrawer(force?: boolean) {
@@ -371,19 +313,26 @@ sizeEl.addEventListener('input', () => {
 
 void (async () => {
   const s = await loadSettings()
-  ensureSelectValue(fontEl, s.fontFamily)
+  const fontFamily = ensureSelectValue(fontEl, s.fontFamily)
+  if (fontFamily !== s.fontFamily) await patchSettings({ fontFamily })
   sizeEl.value = String(s.fontSize)
   modelEl.value = s.model
   autoEl.checked = s.autoSummarize
   applyTypography(fontEl.value, s.fontSize)
   toggleDrawer(false)
-  connectPort()
+  chrome.runtime.onMessage.addListener((msg: BgToPanel) => {
+    handleBgMessage(msg)
+  })
   send({ type: 'panel:ready' })
 })()
 
 setInterval(() => {
   send({ type: 'panel:ping' })
 }, 25_000)
+
+window.addEventListener('beforeunload', () => {
+  send({ type: 'panel:closed' })
+})
 
 async function startStream(run: RunStart) {
   const token = (await loadSettings()).token.trim()
@@ -424,8 +373,11 @@ async function startStream(run: RunStart) {
 
       if (msg.event === 'chunk') {
         const data = JSON.parse(msg.data) as { text: string }
-        markdown += data.text
-        queueRender()
+        const merged = mergeStreamText(markdown, data.text)
+        if (merged !== markdown) {
+          markdown = merged
+          queueRender()
+        }
 
         if (!streamedAnyNonWhitespace && data.text.trim().length > 0) {
           streamedAnyNonWhitespace = true
@@ -438,6 +390,9 @@ async function startStream(run: RunStart) {
         const data = JSON.parse(msg.data) as { model: string }
         const title = currentSource?.title || currentState?.tab.title || 'Current tab'
         subtitleEl.textContent = `${title} · ${data.model}`
+      } else if (msg.event === 'status') {
+        const data = JSON.parse(msg.data) as { text: string }
+        if (!streamedAnyNonWhitespace) setStatus(data.text)
       } else if (msg.event === 'metrics') {
         const data = JSON.parse(msg.data) as {
           summary: string
