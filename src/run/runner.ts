@@ -197,7 +197,7 @@ export async function runCli(
       arg.startsWith('--lang=')
   )
   const retries = parseRetriesArg(program.opts().retries as string)
-  const noCacheFlag = Boolean(program.opts().noCache)
+  const noCacheFlag = program.opts().cache === false
   const extractMode = Boolean(program.opts().extract) || Boolean(program.opts().extractOnly)
   const json = Boolean(program.opts().json)
   const streamMode = parseStreamMode(program.opts().stream as string)

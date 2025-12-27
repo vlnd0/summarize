@@ -59,18 +59,28 @@ let warningFilterInstalled = false
 const installSqliteWarningFilter = () => {
   if (warningFilterInstalled) return
   warningFilterInstalled = true
-  process.on('warning', (warning) => {
+  const original = process.emitWarning.bind(process)
+  process.emitWarning = ((warning: unknown, ...args: unknown[]) => {
+    const message =
+      typeof warning === 'string'
+        ? warning
+        : warning && typeof (warning as { message?: unknown }).message === 'string'
+          ? String((warning as { message?: unknown }).message)
+          : ''
+    const type =
+      typeof args[0] === 'string'
+        ? args[0]
+        : (args[0] as { type?: unknown } | undefined)?.type
+    const name = (warning as { name?: unknown } | undefined)?.name
+    const normalizedType = typeof type === 'string' ? type : typeof name === 'string' ? name : ''
     if (
-      warning?.name === 'ExperimentalWarning' &&
-      typeof warning.message === 'string' &&
-      warning.message.toLowerCase().includes('sqlite')
+      normalizedType === 'ExperimentalWarning' &&
+      message.toLowerCase().includes('sqlite')
     ) {
       return
     }
-    // Preserve non-sqlite warnings.
-    // eslint-disable-next-line no-console
-    console.warn(warning)
-  })
+    return original(warning as never, ...(args as [never]))
+  }) as typeof process.emitWarning
 }
 
 async function openSqlite(path: string): Promise<SqliteDatabase> {
