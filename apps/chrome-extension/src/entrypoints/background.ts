@@ -1,5 +1,6 @@
 import { defineBackground } from 'wxt/utils/define-background'
 
+import { buildDaemonRequestBody } from '../lib/daemon-payload'
 import { loadSettings, patchSettings } from '../lib/settings'
 
 type PanelToBg =
@@ -250,15 +251,7 @@ export default defineBackground(() => {
           'content-type': 'application/json',
         },
         body: JSON.stringify({
-          url: extracted.url,
-          title: extracted.title,
-          text: extracted.text,
-          truncated: extracted.truncated,
-          model: settings.model,
-          length: settings.length,
-          language: settings.language,
-          mode: 'auto',
-          maxCharacters: settings.maxChars,
+          ...buildDaemonRequestBody({ extracted, settings }),
         }),
         signal: runController.signal,
       })

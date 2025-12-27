@@ -2,6 +2,7 @@ import MarkdownIt from 'markdown-it'
 
 import { loadSettings, patchSettings } from '../../lib/settings'
 import { parseSseStream } from '../../lib/sse'
+import { splitStatusPercent } from '../../lib/status'
 import { generateToken } from '../../lib/token'
 
 type PanelToBg =
@@ -96,36 +97,15 @@ function ensureSelectValue(select: HTMLSelectElement, value: unknown): string {
   return normalized
 }
 
-function extractTrailingPercent(input: string): {
-  text: string
-  percent: string | null
-  raw: string
-} {
-  const raw = input
-  const trimmed = input.trim()
-  if (!trimmed) return { text: '', percent: null, raw }
-
-  // Match "... 34%" or "... (34%)" at the end, and split it out for a stronger visual treatment.
-  const m = trimmed.match(/^(?<text>.*?)(?:\s*[([]?(?<pct>\d{1,3})%[)\]]?)\s*$/)
-  if (!m?.groups) return { text: trimmed, percent: null, raw }
-  const pctNum = Number(m.groups.pct)
-  if (!Number.isFinite(pctNum) || pctNum < 0 || pctNum > 100)
-    return { text: trimmed, percent: null, raw }
-  const text = (m.groups.text ?? '').trim()
-  if (!text) return { text: trimmed, percent: null, raw }
-  return { text, percent: `${pctNum}%`, raw }
-}
-
 function setStatus(text: string) {
-  const split = extractTrailingPercent(text)
+  const split = splitStatusPercent(text)
   statusTextEl.textContent = split.text
   statusPctEl.textContent = split.percent ?? ''
 
-  const isError =
-    split.raw.toLowerCase().startsWith('error:') || split.raw.toLowerCase().includes(' error')
+  const isError = text.toLowerCase().startsWith('error:') || text.toLowerCase().includes(' error')
   statusEl.classList.toggle('error', isError)
-  statusEl.classList.toggle('running', Boolean(split.raw.trim()) && !isError)
-  statusEl.classList.toggle('hidden', !split.raw.trim())
+  statusEl.classList.toggle('running', Boolean(text.trim()) && !isError)
+  statusEl.classList.toggle('hidden', !text.trim())
 }
 
 window.addEventListener('error', (event) => {
