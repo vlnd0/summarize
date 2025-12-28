@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import http from 'node:http'
 import { loadSummarizeConfig } from '../config.js'
 import { createCacheStateFromConfig, refreshCacheStoreIfMissing } from '../run/cache-state.js'
+import { resolvePackageVersion } from '../version.js'
 import { formatModelLabelForDisplay } from '../run/finish-line.js'
 import { type DaemonRequestedMode, resolveAutoDaemonMode } from './auto-mode.js'
 import type { DaemonConfig } from './config.js'
@@ -214,7 +215,7 @@ export async function runDaemonServer({
       const pathname = url.pathname
 
       if (req.method === 'GET' && pathname === '/health') {
-        json(res, 200, { ok: true, pid: process.pid }, cors)
+        json(res, 200, { ok: true, pid: process.pid, version: resolvePackageVersion(import.meta.url) }, cors)
         return
       }
 
