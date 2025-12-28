@@ -404,6 +404,10 @@ form {
   gap: 8px;
 }
 
+.advancedFields[hidden] {
+  display: none;
+}
+
 .sectionTitle {
   margin: 0;
 }
