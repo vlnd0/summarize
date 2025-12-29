@@ -117,11 +117,16 @@ function createSession(): Session {
 const MAX_SESSION_BUFFER_EVENTS = 2000
 const MAX_SESSION_BUFFER_BYTES = 512 * 1024
 
-function pushToSession(session: Session, evt: SessionEvent) {
+function pushToSession(
+  session: Session,
+  evt: SessionEvent,
+  onSessionEvent?: ((event: SessionEvent, sessionId: string) => void) | null
+) {
   const encoded = encodeSseEvent(evt)
   for (const res of session.clients) {
     res.write(encoded)
   }
+  onSessionEvent?.(evt, session.id)
   const bytes = Buffer.byteLength(encoded)
   session.buffer.push({ event: evt, bytes })
   session.bufferBytes += bytes
@@ -145,7 +150,8 @@ function emitMeta(
     modelLabel: string | null
     inputSummary: string | null
     summaryFromCache: boolean | null
-  }>
+  }>,
+  onSessionEvent?: ((event: SessionEvent, sessionId: string) => void) | null
 ) {
   const next = { ...session.lastMeta, ...patch }
   if (
@@ -157,7 +163,7 @@ function emitMeta(
     return
   }
   session.lastMeta = next
-  pushToSession(session, { event: 'meta', data: next })
+  pushToSession(session, { event: 'meta', data: next }, onSessionEvent)
 }
 
 function endSession(session: Session) {
@@ -176,11 +182,17 @@ export async function runDaemonServer({
   fetchImpl,
   config,
   port = config.port ?? DAEMON_PORT_DEFAULT,
+  signal,
+  onListening,
+  onSessionEvent,
 }: {
   env: Record<string, string | undefined>
   fetchImpl: typeof fetch
   config: DaemonConfig
   port?: number
+  signal?: AbortSignal
+  onListening?: ((port: number) => void) | null
+  onSessionEvent?: ((event: SessionEvent, sessionId: string) => void) | null
 }): Promise<void> {
   const { config: summarizeConfig } = loadSummarizeConfig({ env })
   const cacheState = await createCacheStateFromConfig({
@@ -296,30 +308,38 @@ export async function runDaemonServer({
             const sink = {
               writeChunk: (chunk: string) => {
                 emittedOutput = true
-                pushToSession(session, { event: 'chunk', data: { text: chunk } })
+                pushToSession(session, { event: 'chunk', data: { text: chunk } }, onSessionEvent)
               },
               onModelChosen: (modelId: string) => {
                 if (session.lastMeta.model === modelId) return
                 emittedOutput = true
-                emitMeta(session, {
-                  model: modelId,
-                  modelLabel: formatModelLabelForDisplay(modelId),
-                })
+                emitMeta(
+                  session,
+                  {
+                    model: modelId,
+                    modelLabel: formatModelLabelForDisplay(modelId),
+                  },
+                  onSessionEvent
+                )
               },
               writeStatus: (text: string) => {
                 const clean = text.trim()
                 if (!clean) return
-                pushToSession(session, { event: 'status', data: { text: clean } })
+                pushToSession(session, { event: 'status', data: { text: clean } }, onSessionEvent)
               },
               writeMeta: (data: {
                 inputSummary?: string | null
                 summaryFromCache?: boolean | null
               }) => {
-                emitMeta(session, {
-                  inputSummary: typeof data.inputSummary === 'string' ? data.inputSummary : null,
-                  summaryFromCache:
-                    typeof data.summaryFromCache === 'boolean' ? data.summaryFromCache : null,
-                })
+                emitMeta(
+                  session,
+                  {
+                    inputSummary: typeof data.inputSummary === 'string' ? data.inputSummary : null,
+                    summaryFromCache:
+                      typeof data.summaryFromCache === 'boolean' ? data.summaryFromCache : null,
+                  },
+                  onSessionEvent
+                )
               },
             }
 
@@ -383,17 +403,21 @@ export async function runDaemonServer({
             })()
 
             if (!session.lastMeta.model) {
-              emitMeta(session, {
-                model: result.usedModel,
-                modelLabel: formatModelLabelForDisplay(result.usedModel),
-              })
+              emitMeta(
+                session,
+                {
+                  model: result.usedModel,
+                  modelLabel: formatModelLabelForDisplay(result.usedModel),
+                },
+                onSessionEvent
+              )
             }
 
-            pushToSession(session, { event: 'metrics', data: result.metrics })
-            pushToSession(session, { event: 'done', data: {} })
+            pushToSession(session, { event: 'metrics', data: result.metrics }, onSessionEvent)
+            pushToSession(session, { event: 'done', data: {} }, onSessionEvent)
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error)
-            pushToSession(session, { event: 'error', data: { message } })
+            pushToSession(session, { event: 'error', data: { message } }, onSessionEvent)
             // Preserve full stack trace in daemon logs for debugging.
             console.error('[summarize-daemon] summarize failed', error)
           } finally {
@@ -468,15 +492,33 @@ export async function runDaemonServer({
   try {
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
-      server.listen(port, DAEMON_HOST, () => resolve())
+      server.listen(port, DAEMON_HOST, () => {
+        const address = server.address()
+        const actualPort =
+          address && typeof address === 'object' && typeof address.port === 'number'
+            ? address.port
+            : port
+        onListening?.(actualPort)
+        resolve()
+      })
     })
 
     await new Promise<void>((resolve) => {
-      const onSignal = () => {
+      let resolved = false
+      const onStop = () => {
+        if (resolved) return
+        resolved = true
         server.close(() => resolve())
       }
-      process.once('SIGTERM', onSignal)
-      process.once('SIGINT', onSignal)
+      process.once('SIGTERM', onStop)
+      process.once('SIGINT', onStop)
+      if (signal) {
+        if (signal.aborted) {
+          onStop()
+        } else {
+          signal.addEventListener('abort', onStop, { once: true })
+        }
+      }
     })
   } finally {
     cacheState.store?.close()

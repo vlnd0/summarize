@@ -13,7 +13,7 @@ const CACHE_TTL_MS = 12 * 60 * 1000
 const TOOLTIP_ID = '__summarize_hover_tooltip__'
 const STYLE_ID = '__summarize_hover_tooltip_style__'
 const ERRORISH_PATTERN =
-  /(^error:|failed to load|failed to fetch|failed to connect|unable to load|unable to fetch|unable to connect|something went wrong|try again|technical error|privacy[- ]related|please disable|access denied|forbidden|captcha|verify you are human|enable javascript|cloudflare|rate limit|too many requests|temporarily unavailable|page not found|404|403|500|no summary returned|summary failed|daemon unreachable)/i
+  /(^error:|failed to load|failed to fetch|failed to connect|unable to load|unable to fetch|unable to connect|cannot access|cannot summarize|something went wrong|try again|technical error|privacy[- ]related|please disable|access denied|forbidden|captcha|verify you are human|enable javascript|cloudflare|rate limit|too many requests|temporarily unavailable|page not found|not found|404|403|500|shortened t\\.co|t\\.co url|no summary returned|summary failed|daemon unreachable|not logged in|log in to|login to|sign in to|formerly twitter|please provide the text content|provided content.*empty)/i
 
 function isValidUrl(raw: string): boolean {
   return /^https?:\/\//i.test(raw)
@@ -188,6 +188,8 @@ export default defineContentScript({
     let activeUrl = ''
     let activeRequestId = ''
     let activeSummary = ''
+    let activeHasChunk = false
+    let activeHasShown = false
     let renderQueued = 0
     let cachedScrollHandler = 0
 
@@ -206,6 +208,8 @@ export default defineContentScript({
       }
       activeRequestId = ''
       activeSummary = ''
+      activeHasChunk = false
+      activeHasShown = false
     }
 
     const clearActive = () => {
@@ -231,12 +235,14 @@ export default defineContentScript({
       if (msg.url !== activeUrl) return
 
       if (msg.type === 'hover:chunk') {
+        activeHasChunk = true
         const merged = mergeStreamingChunk(activeSummary, msg.text ?? '')
         activeSummary = merged.next
         const cleaned = clampText(activeSummary)
         if (cleaned) {
           if (!looksLikeErrorText(cleaned)) {
             showTooltip(activeAnchor, cleaned)
+            activeHasShown = true
           } else {
             hideTooltip()
           }
@@ -245,23 +251,23 @@ export default defineContentScript({
       }
 
       if (msg.type === 'hover:done') {
+        if (!activeHasChunk) {
+          hideTooltip()
+          return
+        }
         const finalText = clampText(activeSummary)
         if (finalText && !looksLikeErrorText(finalText)) {
           cache.set(activeUrl, { summary: finalText, updatedAt: Date.now() })
           showTooltip(activeAnchor, finalText)
+          activeHasShown = true
         } else {
-          hideTooltip()
+          if (!activeHasShown) hideTooltip()
         }
         return
       }
 
       if (msg.type === 'hover:error') {
-        const message = typeof msg.message === 'string' ? msg.message : 'Summary failed'
-        if (!looksLikeErrorText(message)) {
-          showTooltip(activeAnchor, message, { status: true })
-        } else {
-          hideTooltip()
-        }
+        if (!activeHasShown) hideTooltip()
       }
     })
 
@@ -309,10 +315,9 @@ export default defineContentScript({
           return
         }
         showTooltip(anchor, cached.summary)
+        activeHasShown = true
         return
       }
-
-      showTooltip(anchor, 'Summarizing...', { status: true })
 
       abortActive()
       activeRequestId =
@@ -320,6 +325,8 @@ export default defineContentScript({
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(16).slice(2)}`
       activeSummary = ''
+      activeHasChunk = false
+      activeHasShown = false
 
       try {
         // Important: do NOT `fetch("http://127.0.0.1:8787/...")` from the page/content-script context.
@@ -335,12 +342,7 @@ export default defineContentScript({
         if (!res?.ok) throw new Error(res?.error || 'Failed to start hover summary')
       } catch (error) {
         if (activeAnchor && activeUrl === url) {
-          const message = error instanceof Error ? error.message : 'Summary failed'
-          if (!looksLikeErrorText(message)) {
-            showTooltip(anchor, message, { status: true })
-          } else {
-            hideTooltip()
-          }
+          if (!activeHasShown) hideTooltip()
         }
       }
     }
