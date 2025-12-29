@@ -80,8 +80,7 @@ function isLikelyAssetMediaType(mediaType: string | null): boolean {
 
 function parseContentDispositionFilename(header: string | null): string | null {
   if (!header) return null
-  const match =
-    /filename\*\s*=\s*([^;]+)/i.exec(header) ?? /filename\s*=\s*([^;]+)/i.exec(header)
+  const match = /filename\*\s*=\s*([^;]+)/i.exec(header) ?? /filename\s*=\s*([^;]+)/i.exec(header)
   if (!match?.[1]) return null
   let value = match[1].trim()
   if (value.toLowerCase().startsWith("utf-8''")) {

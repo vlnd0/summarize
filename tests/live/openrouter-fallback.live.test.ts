@@ -25,7 +25,7 @@ function shouldSoftSkipLiveError(message: string): boolean {
         return
       }
 
-    const config: SummarizeConfig = {
+      const config: SummarizeConfig = {
         model: { mode: 'auto', rules: [{ candidates: ['xai/grok-4-1-fast'] }] },
       }
 

@@ -27,10 +27,7 @@ describe('link preview fetcher', () => {
     })
     const fetchMock = vi.fn(async () => response)
 
-    const result = await fetchHtmlDocument(
-      fetchMock as unknown as typeof fetch,
-      'https://t.co/abc'
-    )
+    const result = await fetchHtmlDocument(fetchMock as unknown as typeof fetch, 'https://t.co/abc')
 
     expect(result.finalUrl).toBe('https://summarize.sh/')
     expect(result.html).toContain('ok')

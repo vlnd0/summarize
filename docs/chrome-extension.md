@@ -38,6 +38,11 @@ Dev (repo checkout):
 - “Could not establish connection / Receiving end does not exist”:
   - The content script wasn’t injected (yet), or Chrome blocked site access.
   - Chrome → extension details → “Site access” → “On all sites” (or allow the domain), then reload the tab.
+- “<site> wants to look for and connect to any device on your local network”:
+  - Trigger: content scripts (page context) hitting the daemon on `http://127.0.0.1:8787` (hover summaries) can cause Chrome to attribute the request to the current origin and prompt per-site.
+  - Fix: hover summaries must proxy daemon calls via the extension background service worker (reload the extension after updating).
+  - Verify daemon: `summarize daemon status` (or `curl http://127.0.0.1:8787/health`).
+  - Repro/dev: `pnpm -C apps/chrome-extension dev` then enable “Hover summaries” and hover a link.
 
 ## Architecture
 

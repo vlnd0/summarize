@@ -114,7 +114,7 @@ function resolveOpenRouterModelIdForNative({
   const matches = index.bySlug.get(slug)
   if (matches && matches.size === 1) {
     const only = matches.values().next().value as string | undefined
-    const exactMatch = only ? index.byId.get(only) ?? null : null
+    const exactMatch = only ? (index.byId.get(only) ?? null) : null
     if (exactMatch) return exactMatch
   }
   // Retry with punctuation-insensitive slug (e.g. grok-4-1-fast → grok-4.1-fast).
@@ -123,7 +123,7 @@ function resolveOpenRouterModelIdForNative({
   const normalizedMatches = index.bySlugNormalized.get(normalizedSlug)
   if (!normalizedMatches || normalizedMatches.size !== 1) return null
   const normalizedOnly = normalizedMatches.values().next().value as string | undefined
-  return normalizedOnly ? index.byId.get(normalizedOnly) ?? null : null
+  return normalizedOnly ? (index.byId.get(normalizedOnly) ?? null) : null
 }
 
 function normalizeSlugForMatch(slug: string): string {

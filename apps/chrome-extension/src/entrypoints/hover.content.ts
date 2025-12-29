@@ -1,9 +1,7 @@
 import { defineContentScript } from 'wxt/utils/define-content-script'
 
-import { loadSettings, type Settings } from '../lib/settings'
-import { parseSseStream } from '../lib/sse'
-import { parseSseEvent } from '../../../../src/shared/sse-events.js'
 import { mergeStreamingChunk } from '../../../../src/shared/streaming-merge.js'
+import { loadSettings, type Settings } from '../lib/settings'
 
 type HoverCacheEntry = {
   summary: string
@@ -94,6 +92,11 @@ type Tooltip = {
   textEl: HTMLDivElement
 }
 
+type HoverFromBg =
+  | { type: 'hover:chunk'; requestId: string; url: string; text: string }
+  | { type: 'hover:done'; requestId: string; url: string }
+  | { type: 'hover:error'; requestId: string; url: string; message: string }
+
 function ensureTooltip(): Tooltip {
   ensureStyle()
   let el = document.getElementById(TOOLTIP_ID) as HTMLDivElement | null
@@ -183,7 +186,8 @@ export default defineContentScript({
     let hoverTimer: number | null = null
     let activeAnchor: HTMLAnchorElement | null = null
     let activeUrl = ''
-    let abortController: AbortController | null = null
+    let activeRequestId = ''
+    let activeSummary = ''
     let renderQueued = 0
     let cachedScrollHandler = 0
 
@@ -194,10 +198,14 @@ export default defineContentScript({
     }
 
     const abortActive = () => {
-      if (abortController) {
-        abortController.abort()
-        abortController = null
+      if (!activeRequestId) return
+      try {
+        void chrome.runtime.sendMessage({ type: 'hover:abort', requestId: activeRequestId })
+      } catch {
+        // ignore
       }
+      activeRequestId = ''
+      activeSummary = ''
     }
 
     const clearActive = () => {
@@ -207,6 +215,55 @@ export default defineContentScript({
       activeUrl = ''
       hideTooltip()
     }
+
+    chrome.runtime.onMessage.addListener((raw: unknown) => {
+      if (!raw || typeof raw !== 'object') return
+      const msg = raw as Partial<HoverFromBg>
+      if (!msg.type) return
+      if (msg.type !== 'hover:chunk' && msg.type !== 'hover:done' && msg.type !== 'hover:error') {
+        return
+      }
+
+      if (!activeAnchor) return
+      if (!activeUrl) return
+      if (!activeRequestId) return
+      if (msg.requestId !== activeRequestId) return
+      if (msg.url !== activeUrl) return
+
+      if (msg.type === 'hover:chunk') {
+        const merged = mergeStreamingChunk(activeSummary, msg.text ?? '')
+        activeSummary = merged.next
+        const cleaned = clampText(activeSummary)
+        if (cleaned) {
+          if (!looksLikeErrorText(cleaned)) {
+            showTooltip(activeAnchor, cleaned)
+          } else {
+            hideTooltip()
+          }
+        }
+        return
+      }
+
+      if (msg.type === 'hover:done') {
+        const finalText = clampText(activeSummary)
+        if (finalText && !looksLikeErrorText(finalText)) {
+          cache.set(activeUrl, { summary: finalText, updatedAt: Date.now() })
+          showTooltip(activeAnchor, finalText)
+        } else {
+          hideTooltip()
+        }
+        return
+      }
+
+      if (msg.type === 'hover:error') {
+        const message = typeof msg.message === 'string' ? msg.message : 'Summary failed'
+        if (!looksLikeErrorText(message)) {
+          showTooltip(activeAnchor, message, { status: true })
+        } else {
+          hideTooltip()
+        }
+      }
+    })
 
     const scheduleReposition = () => {
       if (!activeAnchor) return
@@ -258,83 +315,26 @@ export default defineContentScript({
       showTooltip(anchor, 'Summarizing...', { status: true })
 
       abortActive()
-      const controller = new AbortController()
-      abortController = controller
-      const token = settings.token.trim()
-      const model = settings.model
-      const language = settings.language
+      activeRequestId =
+        typeof crypto?.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+      activeSummary = ''
 
       try {
-        const res = await fetch('http://127.0.0.1:8787/v1/summarize', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify({
-            url,
-            title: anchor.textContent?.trim() || null,
-            text: '',
-            truncated: false,
-            model,
-            length: 'short',
-            language,
-            prompt: settings.hoverPrompt,
-            mode: 'url',
-            maxCharacters: settings.maxChars,
-            timeout: '30s',
-          }),
-          signal: controller.signal,
-        })
+        // Important: do NOT `fetch("http://127.0.0.1:8787/...")` from the page/content-script context.
+        // Chrome may attribute the request to the current origin and show the “Local network access” prompt
+        // on every site. Proxy through the extension background service worker instead.
+        const res = (await chrome.runtime.sendMessage({
+          type: 'hover:summarize',
+          requestId: activeRequestId,
+          url,
+          title: anchor.textContent?.trim() || null,
+        })) as { ok?: boolean; error?: string }
 
-        const json = (await res.json()) as { ok?: boolean; id?: string; error?: string }
-        if (!res.ok || !json?.ok || !json.id) {
-          throw new Error(json?.error || `${res.status} ${res.statusText}`)
-        }
-
-        const streamRes = await fetch(
-          `http://127.0.0.1:8787/v1/summarize/${json.id}/events`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-            signal: controller.signal,
-          }
-        )
-        if (!streamRes.ok) throw new Error(`${streamRes.status} ${streamRes.statusText}`)
-        if (!streamRes.body) throw new Error('Missing stream body')
-
-        let summary = ''
-        for await (const msg of parseSseStream(streamRes.body)) {
-          if (controller.signal.aborted) return
-          if (!activeAnchor || activeUrl !== url) return
-          const event = parseSseEvent(msg)
-          if (!event) continue
-          if (event.event === 'chunk') {
-            const merged = mergeStreamingChunk(summary, event.data.text)
-            summary = merged.next
-            const cleaned = clampText(summary)
-            if (cleaned) {
-              if (!looksLikeErrorText(cleaned)) {
-                showTooltip(anchor, cleaned)
-              } else {
-                hideTooltip()
-              }
-            }
-          } else if (event.event === 'error') {
-            throw new Error(event.data.message)
-          } else if (event.event === 'done') {
-            break
-          }
-        }
-
-        const finalText = clampText(summary)
-        if (finalText && !looksLikeErrorText(finalText)) {
-          cache.set(url, { summary: finalText, updatedAt: Date.now() })
-          showTooltip(anchor, finalText)
-        } else {
-          hideTooltip()
-        }
+        if (!res?.ok) throw new Error(res?.error || 'Failed to start hover summary')
       } catch (error) {
-        if (!controller.signal.aborted && activeAnchor && activeUrl === url) {
+        if (activeAnchor && activeUrl === url) {
           const message = error instanceof Error ? error.message : 'Summary failed'
           if (!looksLikeErrorText(message)) {
             showTooltip(anchor, message, { status: true })

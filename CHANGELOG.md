@@ -12,6 +12,7 @@
 
 - Auto model selection: OpenRouter fallback now resolves provider-specific ids (including dash/dot slug normalization) and skips fallback when no unique match.
 - Chrome extension: hide hover tooltips when the returned text looks like an error page.
+- Chrome extension: avoid Chrome “Local network access” prompts triggered by hover summaries by proxying localhost daemon calls through the background service worker.
 - URL extraction: preserve final redirected URL so shorteners (t.co) summarize the real destination.
 
 ## 0.8.0 - 2025-12-28

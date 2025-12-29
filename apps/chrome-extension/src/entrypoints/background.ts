@@ -1,7 +1,9 @@
 import { defineBackground } from 'wxt/utils/define-background'
 
+import { parseSseEvent } from '../../../../src/shared/sse-events.js'
 import { buildDaemonRequestBody } from '../lib/daemon-payload'
 import { loadSettings, patchSettings } from '../lib/settings'
+import { parseSseStream } from '../lib/sse'
 
 type PanelToBg =
   | { type: 'panel:ready' }
@@ -26,6 +28,15 @@ type BgToPanel =
   | { type: 'ui:status'; status: string }
   | { type: 'run:start'; run: RunStart }
   | { type: 'run:error'; message: string }
+
+type HoverToBg =
+  | { type: 'hover:summarize'; requestId: string; url: string; title: string | null }
+  | { type: 'hover:abort'; requestId: string }
+
+type BgToHover =
+  | { type: 'hover:chunk'; requestId: string; url: string; text: string }
+  | { type: 'hover:done'; requestId: string; url: string }
+  | { type: 'hover:error'; requestId: string; url: string; message: string }
 
 type UiState = {
   panelOpen: boolean
@@ -204,6 +215,10 @@ export default defineBackground(() => {
   let inflightUrl: string | null = null
   let runController: AbortController | null = null
   let lastNavAt = 0
+  const hoverControllersByTabId = new Map<
+    number,
+    { requestId: string; controller: AbortController }
+  >()
 
   const isPanelOpen = () => {
     if (!panelOpen) return false
@@ -220,6 +235,14 @@ export default defineBackground(() => {
     }
   }
   const sendStatus = (status: string) => void send({ type: 'ui:status', status })
+
+  const sendHover = async (tabId: number, msg: BgToHover) => {
+    try {
+      await chrome.tabs.sendMessage(tabId, msg)
+    } catch {
+      // ignore (tab closed / navigated / no content script)
+    }
+  }
 
   const emitState = async (status: string) => {
     const settings = await loadSettings()
@@ -328,75 +351,211 @@ export default defineBackground(() => {
     })
   }
 
-  chrome.runtime.onMessage.addListener((msg: PanelToBg, _sender, sendResponse) => {
-    if (!msg || typeof msg !== 'object' || typeof (msg as { type?: unknown }).type !== 'string') {
-      return
+  const abortHoverForTab = (tabId: number, requestId?: string) => {
+    const existing = hoverControllersByTabId.get(tabId)
+    if (!existing) return
+    if (requestId && existing.requestId !== requestId) return
+    existing.controller.abort()
+    hoverControllersByTabId.delete(tabId)
+  }
+
+  const runHoverSummarize = async (tabId: number, msg: HoverToBg & { type: 'hover:summarize' }) => {
+    abortHoverForTab(tabId)
+
+    // Keep localhost daemon calls out of content-script/page context to avoid Chrome’s “Local network access”
+    // prompt per-origin. Background SW owns `fetch("http://127.0.0.1:8787/...")` for hover summaries.
+    const controller = new AbortController()
+    hoverControllersByTabId.set(tabId, { requestId: msg.requestId, controller })
+
+    const isStillActive = () => {
+      const current = hoverControllersByTabId.get(tabId)
+      return Boolean(current && current.requestId === msg.requestId && !controller.signal.aborted)
     }
-    const type = (msg as PanelToBg).type
-    if (!type.startsWith('panel:')) return
 
-    panelOpen = true
-    if (type === 'panel:ping') panelLastPingAt = Date.now()
-
-    switch (type) {
-      case 'panel:ready':
-        panelLastPingAt = Date.now()
-        lastSummarizedUrl = null
-        inflightUrl = null
-        runController?.abort()
-        runController = null
-        void emitState('')
-        void summarizeActiveTab('panel-open')
-        break
-      case 'panel:closed':
-        panelOpen = false
-        panelLastPingAt = 0
-        runController?.abort()
-        runController = null
-        lastSummarizedUrl = null
-        inflightUrl = null
-        break
-      case 'panel:summarize':
-        void summarizeActiveTab((msg as { refresh?: boolean }).refresh ? 'refresh' : 'manual', {
-          refresh: Boolean((msg as { refresh?: boolean }).refresh),
-        })
-        break
-      case 'panel:ping':
-        break
-      case 'panel:rememberUrl':
-        lastSummarizedUrl = (msg as { url: string }).url
-        inflightUrl = null
-        break
-      case 'panel:setAuto':
-        void (async () => {
-          await patchSettings({ autoSummarize: (msg as { value: boolean }).value })
-          void emitState('')
-          if ((msg as { value: boolean }).value) void summarizeActiveTab('auto-enabled')
-        })()
-        break
-      case 'panel:setLength':
-        void (async () => {
-          const next = (msg as { value: string }).value
-          const current = await loadSettings()
-          if (current.length === next) return
-          await patchSettings({ length: next })
-          void emitState('')
-          void summarizeActiveTab('length-change')
-        })()
-        break
-      case 'panel:openOptions':
-        void openOptionsWindow()
-        break
+    const settings = await loadSettings()
+    const token = settings.token.trim()
+    if (!token) {
+      await sendHover(tabId, {
+        type: 'hover:error',
+        requestId: msg.requestId,
+        url: msg.url,
+        message: 'Setup required (missing token)',
+      })
+      return
     }
 
     try {
-      sendResponse({ ok: true })
-    } catch {
-      // ignore
+      const base = buildDaemonRequestBody({
+        extracted: { url: msg.url, title: msg.title, text: '', truncated: false },
+        settings,
+      })
+      const body = {
+        ...base,
+        length: 'short',
+        prompt: settings.hoverPrompt,
+        mode: 'url',
+        timeout: '30s',
+      }
+
+      const res = await fetch('http://127.0.0.1:8787/v1/summarize', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      })
+
+      const json = (await res.json()) as { ok?: boolean; id?: string; error?: string }
+      if (!res.ok || !json?.ok || !json.id) {
+        throw new Error(json?.error || `${res.status} ${res.statusText}`)
+      }
+
+      if (!isStillActive()) return
+
+      const streamRes = await fetch(`http://127.0.0.1:8787/v1/summarize/${json.id}/events`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      })
+      if (!streamRes.ok) throw new Error(`${streamRes.status} ${streamRes.statusText}`)
+      if (!streamRes.body) throw new Error('Missing stream body')
+
+      for await (const raw of parseSseStream(streamRes.body)) {
+        if (!isStillActive()) return
+        const event = parseSseEvent(raw)
+        if (!event) continue
+
+        if (event.event === 'chunk') {
+          await sendHover(tabId, {
+            type: 'hover:chunk',
+            requestId: msg.requestId,
+            url: msg.url,
+            text: event.data.text,
+          })
+        } else if (event.event === 'error') {
+          throw new Error(event.data.message)
+        } else if (event.event === 'done') {
+          break
+        }
+      }
+
+      if (!isStillActive()) return
+      await sendHover(tabId, { type: 'hover:done', requestId: msg.requestId, url: msg.url })
+    } catch (err) {
+      if (!isStillActive()) return
+      await sendHover(tabId, {
+        type: 'hover:error',
+        requestId: msg.requestId,
+        url: msg.url,
+        message: friendlyFetchError(err, 'Hover summarize failed'),
+      })
+    } finally {
+      abortHoverForTab(tabId, msg.requestId)
     }
-    // keep SW alive for async branches
-    return true
-  })
+  }
+
+  chrome.runtime.onMessage.addListener(
+    (raw: PanelToBg | HoverToBg, sender, sendResponse): boolean | undefined => {
+      if (!raw || typeof raw !== 'object' || typeof (raw as { type?: unknown }).type !== 'string') {
+        return
+      }
+
+      const type = (raw as { type: string }).type
+      if (type.startsWith('panel:')) {
+        const msg = raw as PanelToBg
+        panelOpen = true
+        if (type === 'panel:ping') panelLastPingAt = Date.now()
+
+        switch (type) {
+          case 'panel:ready':
+            panelLastPingAt = Date.now()
+            lastSummarizedUrl = null
+            inflightUrl = null
+            runController?.abort()
+            runController = null
+            void emitState('')
+            void summarizeActiveTab('panel-open')
+            break
+          case 'panel:closed':
+            panelOpen = false
+            panelLastPingAt = 0
+            runController?.abort()
+            runController = null
+            lastSummarizedUrl = null
+            inflightUrl = null
+            break
+          case 'panel:summarize':
+            void summarizeActiveTab((msg as { refresh?: boolean }).refresh ? 'refresh' : 'manual', {
+              refresh: Boolean((msg as { refresh?: boolean }).refresh),
+            })
+            break
+          case 'panel:ping':
+            break
+          case 'panel:rememberUrl':
+            lastSummarizedUrl = (msg as { url: string }).url
+            inflightUrl = null
+            break
+          case 'panel:setAuto':
+            void (async () => {
+              await patchSettings({ autoSummarize: (msg as { value: boolean }).value })
+              void emitState('')
+              if ((msg as { value: boolean }).value) void summarizeActiveTab('auto-enabled')
+            })()
+            break
+          case 'panel:setLength':
+            void (async () => {
+              const next = (msg as { value: string }).value
+              const current = await loadSettings()
+              if (current.length === next) return
+              await patchSettings({ length: next })
+              void emitState('')
+              void summarizeActiveTab('length-change')
+            })()
+            break
+          case 'panel:openOptions':
+            void openOptionsWindow()
+            break
+        }
+
+        try {
+          sendResponse({ ok: true })
+        } catch {
+          // ignore
+        }
+        // keep SW alive for async branches
+        return true
+      }
+
+      if (type === 'hover:summarize') {
+        const tabId = sender.tab?.id
+        if (!tabId) {
+          try {
+            sendResponse({ ok: false, error: 'Missing sender tab' })
+          } catch {
+            // ignore
+          }
+          return
+        }
+
+        const msg = raw as HoverToBg & { type: 'hover:summarize' }
+        void runHoverSummarize(tabId, msg)
+        try {
+          sendResponse({ ok: true })
+        } catch {
+          // ignore
+        }
+        return
+      }
+
+      if (type === 'hover:abort') {
+        const tabId = sender.tab?.id
+        if (!tabId) return
+        abortHoverForTab(tabId, (raw as HoverToBg & { type: 'hover:abort' }).requestId)
+        return
+      }
+    }
+  )
 
   chrome.webNavigation.onHistoryStateUpdated.addListener(() => {
     const now = Date.now()
