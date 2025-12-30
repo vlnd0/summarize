@@ -179,6 +179,12 @@ npx -y @steipete/summarize "https://example.com" --length 20k
   - If omitted, no max token parameter is sent (provider default).
   - Prefer `--length` unless you need a hard cap (some providers count “reasoning” into the cap).
 - Minimums: `--length` numeric values must be ≥ 50 chars; `--max-output-tokens` must be ≥ 16.
+- Preset targets (source of truth: `packages/core/src/prompts/summary-lengths.ts`):
+  - short: target ~900 chars (range 600-1,200)
+  - medium: target ~1,800 chars (range 1,200-2,500)
+  - long: target ~4,200 chars (range 2,500-6,000)
+  - xl: target ~9,000 chars (range 6,000-14,000)
+  - xxl: target ~17,000 chars (range 14,000-22,000)
 
 ## Limits
 

@@ -1,7 +1,8 @@
 import type { OutputLanguage } from '../language.js'
 import { formatOutputLanguageInstruction } from '../language.js'
 import { buildInstructions, buildTaggedPrompt, type PromptOverrides } from './format.js'
-import type { SummaryLengthTarget } from './link-summary.js'
+import { pickSummaryLengthForCharacters, type SummaryLengthTarget } from './link-summary.js'
+import { formatPresetLengthGuidance, resolveSummaryLengthSpec } from './summary-lengths.js'
 
 export function buildFileSummaryPrompt({
   filename,
@@ -31,6 +32,13 @@ export function buildFileSummaryPrompt({
           summaryLength.maxCharacters > contentCharacters
         ? { maxCharacters: contentCharacters }
         : summaryLength
+  const preset =
+    typeof effectiveSummaryLength === 'string'
+      ? effectiveSummaryLength
+      : pickSummaryLengthForCharacters(effectiveSummaryLength.maxCharacters)
+  const directive = resolveSummaryLengthSpec(preset)
+  const presetLengthLine =
+    typeof effectiveSummaryLength === 'string' ? formatPresetLengthGuidance(preset) : ''
   const maxCharactersLine =
     typeof effectiveSummaryLength === 'string'
       ? ''
@@ -49,9 +57,12 @@ export function buildFileSummaryPrompt({
     'You summarize files for curious users.',
     'Summarize the attached file.',
     'Be factual and do not invent details.',
+    directive.guidance,
+    directive.formatting,
     'Format the answer in Markdown.',
     'Use short paragraphs; use bullet lists only when they improve scanability; avoid rigid templates.',
     'Do not use emojis.',
+    presetLengthLine,
     maxCharactersLine,
     contentLengthLine,
     formatOutputLanguageInstruction(outputLanguage ?? { kind: 'auto' }),
@@ -102,6 +113,13 @@ export function buildFileTextSummaryPrompt({
       : summaryLength.maxCharacters > contentLength
         ? { maxCharacters: contentLength }
         : summaryLength
+  const preset =
+    typeof effectiveSummaryLength === 'string'
+      ? effectiveSummaryLength
+      : pickSummaryLengthForCharacters(effectiveSummaryLength.maxCharacters)
+  const directive = resolveSummaryLengthSpec(preset)
+  const presetLengthLine =
+    typeof effectiveSummaryLength === 'string' ? formatPresetLengthGuidance(preset) : ''
   const maxCharactersLine =
     typeof effectiveSummaryLength === 'string'
       ? ''
@@ -118,9 +136,12 @@ export function buildFileTextSummaryPrompt({
     'You summarize files for curious users.',
     'Summarize the file content below.',
     'Be factual and do not invent details.',
+    directive.guidance,
+    directive.formatting,
     'Format the answer in Markdown.',
     'Use short paragraphs; use bullet lists only when they improve scanability; avoid rigid templates.',
     'Do not use emojis.',
+    presetLengthLine,
     maxCharactersLine,
     formatOutputLanguageInstruction(outputLanguage ?? { kind: 'auto' }),
     'Return only the summary.',

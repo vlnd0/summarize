@@ -19,7 +19,7 @@ describe('buildFileSummaryPrompt', () => {
     expect(prompt).toContain('<context>')
     expect(prompt).toContain('Filename: paper.pdf')
     expect(prompt).toContain('Media type: application/pdf')
-    expect(prompt).not.toContain('Target length:')
+    expect(prompt).toContain('Target length: around 900 characters')
   })
 
   it('builds a prompt for soft character targets', () => {

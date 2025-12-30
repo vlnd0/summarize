@@ -36,6 +36,6 @@ describe('buildPathSummaryPrompt', () => {
     expect(prompt).toContain('Path: /tmp/photo.jpg')
     expect(prompt).not.toContain('Filename:')
     expect(prompt).not.toContain('Media type:')
-    expect(prompt).not.toContain('Target length:')
+    expect(prompt).toContain('Target length: around 900 characters')
   })
 })

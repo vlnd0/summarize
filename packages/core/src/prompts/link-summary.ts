@@ -2,54 +2,24 @@ import type { OutputLanguage } from '../language.js'
 import { formatOutputLanguageInstruction } from '../language.js'
 import type { SummaryLength } from '../shared/contracts.js'
 import { buildInstructions, buildTaggedPrompt, type PromptOverrides } from './format.js'
-
-const SUMMARY_LENGTH_DIRECTIVES: Record<SummaryLength, { guidance: string; formatting: string }> = {
-  short: {
-    guidance:
-      'Write a tight summary in 2–3 sentences that delivers the primary claim plus one high-signal supporting detail.',
-    formatting: 'Return a single short paragraph.',
-  },
-  medium: {
-    guidance:
-      'Write two short paragraphs covering the core claim in the first paragraph and the most important supporting evidence or data points in the second.',
-    formatting:
-      'Each paragraph should contain 2–3 sentences. Separate paragraphs with a blank line.',
-  },
-  long: {
-    guidance:
-      'Write three short paragraphs that summarize the text in order of importance: (1) core claim and scope, (2) key supporting facts or events, (3) other notable details or conclusions stated in the source.',
-    formatting:
-      'Each paragraph should contain 2–4 sentences. Separate paragraphs with a blank line.',
-  },
-  xl: {
-    guidance:
-      'Write a detailed summary in 4–6 short paragraphs. Focus on what the text says (facts, events, arguments) and include concrete numbers or quotes when present.',
-    formatting: 'Use Markdown paragraphs separated by single blank lines.',
-  },
-  xxl: {
-    guidance:
-      'Write a comprehensive summary in 6–10 short paragraphs. Cover background, main points, evidence, and stated outcomes in the source text; avoid adding implications or recommendations unless explicitly stated.',
-    formatting: 'Use Markdown paragraphs separated by single blank lines.',
-  },
-}
+import {
+  formatPresetLengthGuidance,
+  resolveSummaryLengthSpec,
+  SUMMARY_LENGTH_MAX_CHARACTERS,
+  SUMMARY_LENGTH_TO_TOKENS,
+} from './summary-lengths.js'
 
 const HEADING_LENGTH_CHAR_THRESHOLD = 6000
 
-export const SUMMARY_LENGTH_TO_TOKENS: Record<SummaryLength, number> = {
-  short: 768,
-  medium: 1536,
-  long: 3072,
-  xl: 6144,
-  xxl: 12288,
-}
+export { SUMMARY_LENGTH_TO_TOKENS }
 
 export type SummaryLengthTarget = SummaryLength | { maxCharacters: number }
 
 export function pickSummaryLengthForCharacters(maxCharacters: number): SummaryLength {
-  if (maxCharacters <= 1200) return 'short'
-  if (maxCharacters <= 2500) return 'medium'
-  if (maxCharacters <= 6000) return 'long'
-  if (maxCharacters <= 14000) return 'xl'
+  if (maxCharacters <= SUMMARY_LENGTH_MAX_CHARACTERS.short) return 'short'
+  if (maxCharacters <= SUMMARY_LENGTH_MAX_CHARACTERS.medium) return 'medium'
+  if (maxCharacters <= SUMMARY_LENGTH_MAX_CHARACTERS.long) return 'long'
+  if (maxCharacters <= SUMMARY_LENGTH_MAX_CHARACTERS.xl) return 'xl'
   return 'xxl'
 }
 
@@ -57,13 +27,6 @@ export function estimateMaxCompletionTokensForCharacters(maxCharacters: number):
   const estimate = Math.ceil(maxCharacters / 4)
   return Math.max(256, estimate)
 }
-
-const resolveSummaryDirective = (
-  length: SummaryLength
-): (typeof SUMMARY_LENGTH_DIRECTIVES)[SummaryLength] =>
-  // SummaryLength is a contracts-enforced enum in all call sites; suppress generic injection warning.
-  // eslint-disable-next-line security/detect-object-injection
-  SUMMARY_LENGTH_DIRECTIVES[length]
 
 const formatCount = (value: number): string => value.toLocaleString()
 
@@ -141,7 +104,9 @@ export function buildLinkSummaryPrompt({
     typeof effectiveSummaryLength === 'string'
       ? effectiveSummaryLength
       : pickSummaryLengthForCharacters(effectiveSummaryLength.maxCharacters)
-  const directive = resolveSummaryDirective(preset)
+  const directive = resolveSummaryLengthSpec(preset)
+  const presetLengthLine =
+    typeof effectiveSummaryLength === 'string' ? formatPresetLengthGuidance(preset) : ''
   const needsHeadings =
     preset === 'xl' ||
     preset === 'xxl' ||
@@ -187,6 +152,7 @@ export function buildLinkSummaryPrompt({
     directive.guidance,
     directive.formatting,
     headingInstruction,
+    presetLengthLine,
     maxCharactersLine,
     contentLengthLine,
     formatOutputLanguageInstruction(outputLanguage ?? { kind: 'auto' }),

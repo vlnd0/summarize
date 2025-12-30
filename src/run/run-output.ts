@@ -1,5 +1,5 @@
 import type { LengthArg } from '../flags.js'
-import { SUMMARY_LENGTH_MAX_CHARACTERS } from './constants.js'
+import { SUMMARY_LENGTH_MAX_CHARACTERS } from '../prompts/index.js'
 import { resolveTargetCharacters } from './format.js'
 
 export function resolveDesiredOutputTokens({

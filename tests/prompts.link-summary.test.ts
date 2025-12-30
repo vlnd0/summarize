@@ -28,6 +28,7 @@ describe('buildLinkSummaryPrompt', () => {
     expect(prompt).toContain('Site: Example')
     expect(prompt).toContain('Page description: Desc')
     expect(prompt).toContain('Extracted content length: 4 characters')
+    expect(prompt).toContain('Target length: around 900 characters')
     expect(prompt).toContain('You are not given any quotes from people who shared this link.')
     expect(prompt).not.toContain('Tweets from sharers:')
   })
@@ -83,7 +84,7 @@ describe('buildLinkSummaryPrompt', () => {
       '- @steipete (2025-12-17) [1,200 likes, 45 reshares, 2 replies]: Worth reading'
     )
     expect(prompt).toContain('append a brief subsection titled "What sharers are saying"')
-    expect(prompt).toContain('Use Markdown paragraphs separated by single blank lines.')
+    expect(prompt).toContain('Use 2-5 short paragraphs.')
     expect(prompt).toContain(
       'Use short paragraphs; use bullet lists only when they improve scanability; avoid rigid templates.'
     )
