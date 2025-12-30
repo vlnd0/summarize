@@ -83,7 +83,7 @@ The daemon decides the best pipeline:
 
 ## Video Selection (Page vs Video)
 
-When the page contains embedded audio/video, the side panel shows a small Page/Video (or Page/Audio) dropdown next to “Summarize”. Selecting the media option forces URL mode with transcript-first extraction (captions → yt-dlp/Whisper fallback). Selection is per-run (not persisted).
+When the page contains embedded audio/video, the Summarize button gains a dropdown caret. Click the caret to pick Page vs Video/Audio. Selecting Video/Audio forces URL mode with transcript-first extraction (captions → yt-dlp/Whisper fallback). Selection is per-run (not persisted).
 
 See `docs/media.md` for detection and transcript rules.
 

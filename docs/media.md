@@ -8,7 +8,7 @@ read_when:
 
 ## Detection (HTML)
 
-- Embedded video/audio: `<video>` / `<audio>` tags, `og:video` / `og:audio`.
+- Embedded video/audio: `<video>` / `<audio>` tags, `og:video` / `og:audio`, iframe embeds (YouTube/Vimeo/Twitch/Wistia, Spotify/SoundCloud/Podcasts).
 - Captions: `<track kind="captions|subtitles" src=...>`.
 
 ## Transcript resolution order
@@ -24,7 +24,7 @@ read_when:
 
 ## Chrome extension behavior
 
-- When media is detected on a page, the side panel shows a Page/Video (or Page/Audio) dropdown.
+- When media is detected on a page, the Summarize button gains a dropdown caret (Page/Video or Page/Audio).
 - Selecting Video/Audio forces URL mode + transcript-first extraction for that run only.
 - Selection is not stored.
 
