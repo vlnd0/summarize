@@ -82,6 +82,37 @@ function shouldSoftSkipLiveError(message: string): boolean {
   )
 
   it(
+    'OpenAI (gpt-5-mini) streams text',
+    async () => {
+      if (!apiKeys.openaiApiKey) {
+        it.skip('requires OPENAI_API_KEY', () => {})
+        return
+      }
+      try {
+        const result = await streamTextWithModelId({
+          modelId: 'openai/gpt-5-mini',
+          apiKeys,
+          prompt: { userText: 'Say exactly: ok' },
+          temperature: 0.7,
+          maxOutputTokens: 32,
+          timeoutMs,
+          fetchImpl: globalThis.fetch.bind(globalThis),
+        })
+        let text = ''
+        for await (const chunk of result.textStream) {
+          text += chunk
+        }
+        expect(text.trim().length).toBeGreaterThan(0)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (shouldSoftSkipLiveError(message)) return
+        throw error
+      }
+    },
+    timeoutMs
+  )
+
+  it(
     'Anthropic (opus 4.5) returns text',
     async () => {
       if (!apiKeys.anthropicApiKey) {
