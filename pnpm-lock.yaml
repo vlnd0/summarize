@@ -39,11 +39,11 @@ importers:
         specifier: ^9.0.0
         version: 9.0.0
       osc-progress:
-        specifier: github:steipete/osc-progress#v0.2.0
-        version: https://codeload.github.com/steipete/osc-progress/tar.gz/44bd742691cda9a11c08bcd27ec69aaf4576e850
+        specifier: ^0.2.0
+        version: 0.2.0
       tokentally:
-        specifier: github:steipete/tokentally#v0.1.0
-        version: https://codeload.github.com/steipete/tokentally/tar.gz/99865e5c16f5340c9589a2c5d85c3ea47dbcec82
+        specifier: ^0.1.1
+        version: 0.1.1
       tslog:
         specifier: ^4.10.2
         version: 4.10.2
@@ -2202,9 +2202,8 @@ packages:
     resolution: {integrity: sha512-jd0cvB8qQ5uVt0lvCIexBaROw1KyKm5sbulg2fWOHjETisuCzWyt+eTZKEMs8v6HwzoGs8xik26jg7eCM6pS+A==}
     engines: {node: '>= 0.4.0'}
 
-  osc-progress@https://codeload.github.com/steipete/osc-progress/tar.gz/44bd742691cda9a11c08bcd27ec69aaf4576e850:
-    resolution: {tarball: https://codeload.github.com/steipete/osc-progress/tar.gz/44bd742691cda9a11c08bcd27ec69aaf4576e850}
-    version: 0.2.0
+  osc-progress@0.2.0:
+    resolution: {integrity: sha512-GJR9XnS8dQ+sAdbhX90RA4WbmEyrso7X9aHMws4MaQ2GRpfEjnOUSZIdOXJQfnIfBoy9oCc7US/MNFCyuJQzjg==}
     engines: {node: '>=20'}
 
   oxlint-tsgolint@0.10.0:
@@ -2639,9 +2638,8 @@ packages:
     resolution: {integrity: sha512-kh9LVIWH5CnL63Ipf0jhlBIy0UsrMj/NJDfpsy1SqOXlLKEVyXXYrnFxFT1yOOYVGBSApeVnjPw/sBz5BfEjAQ==}
     engines: {node: '>=14.16'}
 
-  tokentally@https://codeload.github.com/steipete/tokentally/tar.gz/99865e5c16f5340c9589a2c5d85c3ea47dbcec82:
-    resolution: {tarball: https://codeload.github.com/steipete/tokentally/tar.gz/99865e5c16f5340c9589a2c5d85c3ea47dbcec82}
-    version: 0.1.0
+  tokentally@0.1.1:
+    resolution: {integrity: sha512-z1e4nTJe8/PWSoWCQmPMX5LoOWDVfj9IQ+rTChQcXrxYNhDxxjqloYSmOjnClyRdnTrawS+YNDfrk7bNuzsVKQ==}
     engines: {node: '>=20'}
 
   tough-cookie@6.0.0:
@@ -5096,7 +5094,7 @@ snapshots:
 
   os-shim@0.1.3: {}
 
-  osc-progress@https://codeload.github.com/steipete/osc-progress/tar.gz/44bd742691cda9a11c08bcd27ec69aaf4576e850: {}
+  osc-progress@0.2.0: {}
 
   oxlint-tsgolint@0.10.0:
     optionalDependencies:
@@ -5550,7 +5548,7 @@ snapshots:
       '@tokenizer/token': 0.3.0
       ieee754: 1.2.1
 
-  tokentally@https://codeload.github.com/steipete/tokentally/tar.gz/99865e5c16f5340c9589a2c5d85c3ea47dbcec82: {}
+  tokentally@0.1.1: {}
 
   tough-cookie@6.0.0:
     dependencies:
