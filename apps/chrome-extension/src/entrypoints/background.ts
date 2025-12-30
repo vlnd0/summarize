@@ -172,6 +172,16 @@ function friendlyFetchError(err: unknown, context: string): string {
   return `${context}: ${message}`
 }
 
+function isDaemonUnreachableError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err)
+  const normalized = message.toLowerCase()
+  return (
+    normalized.includes('failed to fetch') ||
+    normalized.includes('networkerror') ||
+    normalized.includes('econnrefused')
+  )
+}
+
 function normalizeUrl(value: string) {
   try {
     const url = new URL(value)
@@ -256,6 +266,8 @@ async function extractFromTab(
 export default defineBackground(() => {
   let panelOpen = false
   let panelLastPingAt = 0
+  let lastDaemonReady: boolean | null = null
+  let pendingAutoUrl: string | null = null
   let lastSummarizedUrl: string | null = null
   let inflightUrl: string | null = null
   let runController: AbortController | null = null
@@ -446,11 +458,14 @@ export default defineBackground(() => {
     }
   }
 
-  const emitState = async (status: string) => {
+  const emitState = async (status: string, opts?: { checkRecovery?: boolean }) => {
     const settings = await loadSettings()
     const tab = await getActiveTab()
     const health = await daemonHealth()
     const authed = settings.token.trim() ? await daemonPing(settings.token.trim()) : { ok: false }
+    const daemonReady = health.ok && authed.ok
+    const prevReady = lastDaemonReady
+    lastDaemonReady = daemonReady
     const state: UiState = {
       panelOpen: isPanelOpen(),
       daemon: { ok: health.ok, authed: authed.ok, error: health.error ?? authed.error },
@@ -466,6 +481,22 @@ export default defineBackground(() => {
       status,
     }
     void send({ type: 'ui:state', state })
+
+    if (
+      opts?.checkRecovery &&
+      pendingAutoUrl &&
+      prevReady === false &&
+      daemonReady &&
+      !runController &&
+      !inflightUrl &&
+      tab?.url &&
+      urlsMatch(tab.url, pendingAutoUrl)
+    ) {
+      pendingAutoUrl = null
+      void summarizeActiveTab('daemon-recovered')
+    } else if (pendingAutoUrl && tab?.url && !urlsMatch(tab.url, pendingAutoUrl)) {
+      pendingAutoUrl = null
+    }
   }
 
   const summarizeActiveTab = async (reason: string, opts?: { refresh?: boolean }) => {
@@ -586,6 +617,10 @@ export default defineBackground(() => {
       void send({ type: 'run:error', message })
       sendStatus(`Error: ${message}`)
       inflightUrl = null
+      if (!isManual && isDaemonUnreachableError(err)) {
+        lastDaemonReady = false
+        pendingAutoUrl = resolvedPayload.url
+      }
       return
     }
 
@@ -850,6 +885,7 @@ export default defineBackground(() => {
             })()
             break
           case 'panel:ping':
+            void emitState('', { checkRecovery: true })
             break
           case 'panel:rememberUrl':
             lastSummarizedUrl = (msg as { url: string }).url
