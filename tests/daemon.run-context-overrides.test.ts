@@ -122,6 +122,7 @@ describe('daemon/flow-context (overrides)', () => {
         markdownMode: 'llm',
         preprocessMode: 'always',
         youtubeMode: 'no-auto',
+        videoMode: 'transcript',
         timeoutMs: 45_000,
         retries: 2,
         maxOutputTokensArg: 512,
@@ -134,6 +135,7 @@ describe('daemon/flow-context (overrides)', () => {
     expect(ctx.flags.markdownMode).toBe('llm')
     expect(ctx.flags.preprocessMode).toBe('always')
     expect(ctx.flags.youtubeMode).toBe('no-auto')
+    expect(ctx.flags.videoMode).toBe('transcript')
     expect(ctx.flags.timeoutMs).toBe(45_000)
     expect(ctx.flags.retries).toBe(2)
     expect(ctx.flags.maxOutputTokensArg).toBe(512)
