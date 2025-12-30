@@ -30,11 +30,12 @@ type SidepanelLengthPickerProps = {
   onLengthChange: (value: string) => void
 }
 
-type SourcePickerProps = {
+type SummarizeControlProps = {
   value: 'page' | 'video'
-  visible: boolean
+  mediaAvailable: boolean
   videoLabel?: string
   onValueChange: (value: 'page' | 'video') => void
+  onSummarize: () => void
 }
 
 const lengthPresets = ['short', 'medium', 'long', 'xl', 'xxl', '20k']
@@ -420,8 +421,15 @@ function SidepanelLengthPicker(props: SidepanelLengthPickerProps) {
   return <LengthField variant="mini" value={props.length} onValueChange={props.onLengthChange} />
 }
 
-function SourcePicker(props: SourcePickerProps) {
-  if (!props.visible) return null
+function SummarizeControl(props: SummarizeControlProps) {
+  if (!props.mediaAvailable) {
+    return (
+      <button type="button" className="ghost summarizeButton" onClick={props.onSummarize}>
+        Summarize
+      </button>
+    )
+  }
+
   const sourceItems: SelectItem[] = [
     { value: 'page', label: 'Page' },
     { value: 'video', label: props.videoLabel ?? 'Video' },
@@ -467,14 +475,52 @@ function SourcePicker(props: SourcePickerProps) {
     </div>
   )
 
+  const triggerProps = api.getTriggerProps()
+  const onClick = (event: MouseEvent) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    const hit = event.clientX - rect.left >= rect.width - 28
+    if (hit) {
+      triggerProps.onClick?.(event)
+      return
+    }
+    if (api.open) api.setOpen(false)
+    props.onSummarize()
+  }
+  const onPointerDown = (event: PointerEvent) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    const hit = event.clientX - rect.left >= rect.width - 28
+    if (hit) {
+      triggerProps.onPointerDown?.(event)
+    }
+  }
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      api.setOpen(true)
+      return
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      props.onSummarize()
+      return
+    }
+    triggerProps.onKeyDown?.(event)
+  }
+  const { onClick: _onClick, onPointerDown: _onPointerDown, onKeyDown: _onKeyDown, ...rest } =
+    triggerProps
+
   return (
-    <div className="picker sourcePicker" {...api.getRootProps()}>
+    <div className="picker summarizePicker" {...api.getRootProps()}>
       <button
-        className="pickerTrigger sourcePickerTrigger"
-        aria-label="Input mode"
-        {...api.getTriggerProps()}
+        type="button"
+        className="ghost summarizeButton isDropdown"
+        aria-label={`Summarize (${selectedLabel})`}
+        {...rest}
+        onClick={onClick}
+        onPointerDown={onPointerDown}
+        onKeyDown={onKeyDown}
       >
-        <span className="sourcePickerLabel">{selectedLabel}</span>
+        Summarize
       </button>
       {portalRoot ? createPortal(content, portalRoot) : content}
       <select className="pickerHidden" {...api.getHiddenSelectProps()} />
@@ -498,16 +544,16 @@ export function mountSidepanelLengthPicker(root: HTMLElement, props: SidepanelLe
   }
 }
 
-export function mountSourcePicker(root: HTMLElement, props: SourcePickerProps) {
+export function mountSummarizeControl(root: HTMLElement, props: SummarizeControlProps) {
   let current = props
   const renderPicker = () => {
-    render(<SourcePicker {...current} />, root)
+    render(<SummarizeControl {...current} />, root)
   }
 
   renderPicker()
 
   return {
-    update(next: SourcePickerProps) {
+    update(next: SummarizeControlProps) {
       current = next
       renderPicker()
     },

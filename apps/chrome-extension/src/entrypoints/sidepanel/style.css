@@ -517,39 +517,29 @@ header {
   gap: 8px;
 }
 
-.splitControl {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.sourcePickerRoot {
+.summarizeControlRoot {
   display: flex;
 }
 
-.sourcePicker {
-  min-width: 64px;
+.summarizeButton {
+  position: relative;
 }
 
-.sourcePickerTrigger {
-  padding: 7px 28px 7px 10px;
-  font-size: 12px;
-  color: var(--muted);
-  border-color: var(--border);
-  background: transparent;
+.summarizeButton.isDropdown {
+  padding-right: 28px;
 }
 
-.sourcePickerTrigger:hover {
-  color: var(--text);
-  border-color: color-mix(in srgb, var(--ui-focus) 35%, var(--border));
-}
-
-.sourcePickerTrigger::after {
-  border-color: currentColor;
-}
-
-.sourcePickerLabel {
-  text-transform: capitalize;
+.summarizeButton.isDropdown::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%) rotate(45deg);
+  pointer-events: none;
 }
 
 button {

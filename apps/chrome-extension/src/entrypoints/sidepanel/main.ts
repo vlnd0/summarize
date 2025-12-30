@@ -12,7 +12,7 @@ import { mountCheckbox } from '../../ui/zag-checkbox'
 import { ChatController } from './chat-controller'
 import { type ChatHistoryLimits, compactChatHistory } from './chat-state'
 import { createHeaderController } from './header-controller'
-import { mountSidepanelLengthPicker, mountSidepanelPickers, mountSourcePicker } from './pickers'
+import { mountSidepanelLengthPicker, mountSidepanelPickers, mountSummarizeControl } from './pickers'
 import { createStreamController } from './stream-controller'
 import type { ChatMessage, PanelPhase, PanelState, RunStart, UiState } from './types'
 
@@ -67,8 +67,7 @@ const metricsHomeEl = byId<HTMLDivElement>('metricsHome')
 const chatMetricsSlotEl = byId<HTMLDivElement>('chatMetricsSlot')
 const chatDockEl = byId<HTMLDivElement>('chatDock')
 
-const summarizeBtn = byId<HTMLButtonElement>('summarize')
-const sourcePickerRoot = byId<HTMLElement>('sourcePickerRoot')
+const summarizeControlRoot = byId<HTMLElement>('summarizeControlRoot')
 const drawerToggleBtn = byId<HTMLButtonElement>('drawerToggle')
 const refreshBtn = byId<HTMLButtonElement>('refresh')
 const advancedBtn = byId<HTMLButtonElement>('advanced')
@@ -144,13 +143,14 @@ const chatController = new ChatController({
   onNewContent: () => updateAutoScrollLock(),
 })
 
-const sourcePicker = mountSourcePicker(sourcePickerRoot, {
+const summarizeControl = mountSummarizeControl(summarizeControlRoot, {
   value: inputMode,
-  visible: false,
+  mediaAvailable: false,
   videoLabel: 'Video',
   onValueChange: (value) => {
     inputMode = value
   },
+  onSummarize: () => sendSummarize(),
 })
 
 function normalizeQueueText(input: string) {
@@ -1438,14 +1438,14 @@ function updateControls(state: UiState) {
     inputMode = 'page'
   }
   mediaAvailable = nextMediaAvailable
-  sourcePickerRoot.classList.toggle('hidden', !mediaAvailable)
-  sourcePicker.update({
+  summarizeControl.update({
     value: inputMode,
-    visible: mediaAvailable,
+    mediaAvailable,
     videoLabel: nextVideoLabel,
     onValueChange: (value) => {
       inputMode = value
     },
+    onSummarize: () => sendSummarize(),
   })
   const showingSetup = maybeShowSetup(state)
   if (showingSetup && panelState.phase !== 'setup') {
@@ -1719,7 +1719,6 @@ function sendChatMessage() {
   startChatMessage(input)
 }
 
-summarizeBtn.addEventListener('click', () => sendSummarize())
 refreshBtn.addEventListener('click', () => sendSummarize({ refresh: true }))
 errorRetryBtn.addEventListener('click', () => retryLastAction())
 drawerToggleBtn.addEventListener('click', () => toggleDrawer())
