@@ -1,4 +1,4 @@
-import type { AssistantMessage, Message, Tool } from '@mariozechner/pi-ai'
+import type { Api, AssistantMessage, Message, Model, Tool } from '@mariozechner/pi-ai'
 import { completeSimple, getModel } from '@mariozechner/pi-ai'
 import { buildAutoModelAttempts } from '../model-auto.js'
 import { createSyntheticModel } from '../llm/providers/shared.js'
@@ -55,7 +55,7 @@ const TOOL_DEFINITIONS: Record<string, Tool> = {
         newTab: { type: 'boolean', description: 'Open in a new tab', default: false },
       },
       required: ['url'],
-    } as Tool['parameters'],
+    } as unknown as Tool['parameters'],
   },
   repl: {
     name: 'repl',
@@ -69,7 +69,7 @@ const TOOL_DEFINITIONS: Record<string, Tool> = {
         code: { type: 'string', description: 'JavaScript code to execute' },
       },
       required: ['title', 'code'],
-    } as Tool['parameters'],
+    } as unknown as Tool['parameters'],
   },
   ask_user_which_element: {
     name: 'ask_user_which_element',
@@ -80,7 +80,7 @@ const TOOL_DEFINITIONS: Record<string, Tool> = {
       properties: {
         message: { type: 'string', description: 'Optional instruction shown to the user' },
       },
-    } as Tool['parameters'],
+    } as unknown as Tool['parameters'],
   },
   skill: {
     name: 'skill',
@@ -171,7 +171,7 @@ const TOOL_DEFINITIONS: Record<string, Tool> = {
         },
       },
       required: ['action'],
-    } as Tool['parameters'],
+    } as unknown as Tool['parameters'],
   },
   summarize: {
     name: 'summarize',
@@ -227,7 +227,7 @@ const TOOL_DEFINITIONS: Record<string, Tool> = {
         timestamps: { type: 'boolean', description: 'Include transcript timestamps' },
         maxCharacters: { type: 'number', description: 'Max characters for extraction' },
       },
-    } as Tool['parameters'],
+    } as unknown as Tool['parameters'],
   },
   debugger: {
     name: 'debugger',
@@ -245,7 +245,7 @@ const TOOL_DEFINITIONS: Record<string, Tool> = {
         code: { type: 'string', description: 'JavaScript to evaluate in the main world' },
       },
       required: ['action', 'code'],
-    } as Tool['parameters'],
+    } as unknown as Tool['parameters'],
   },
 }
 
@@ -299,7 +299,7 @@ function parseProviderModelId(modelId: string): { provider: string; model: strin
   return { provider, model }
 }
 
-function overrideModelBaseUrl(model: ReturnType<typeof getModel>, baseUrl: string | null) {
+function overrideModelBaseUrl(model: Model<Api>, baseUrl: string | null) {
   if (!baseUrl) return model
   return { ...model, baseUrl }
 }
@@ -312,9 +312,9 @@ function resolveModelWithFallback({
   provider: string
   modelId: string
   baseUrl: string | null
-}) {
+}): Model<Api> {
   try {
-    return overrideModelBaseUrl(getModel(provider as never, modelId as never), baseUrl)
+    return overrideModelBaseUrl(getModel(provider as never, modelId as never) as Model<Api>, baseUrl)
   } catch (error) {
     if (baseUrl) {
       return createSyntheticModel({
@@ -360,7 +360,7 @@ function resolveApiKeyForModel({
   model,
   apiKeys,
 }: {
-  model: ReturnType<typeof getModel>
+  model: Model<Api>
   apiKeys: AgentApiKeys
 }): string {
   const resolved = (() => {
