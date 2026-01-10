@@ -160,10 +160,34 @@ async function launchExtension(browser: BrowserType = 'chromium'): Promise<Exten
     await route.fulfill({ status: 204, body: '' })
   })
 
-  const background =
-    context.serviceWorkers()[0] ??
-    (await context.waitForEvent('serviceworker', { timeout: 15_000 }))
-  const extensionId = new URL(background.url()).host
+  // Get extension ID - different approach for Firefox vs Chromium
+  let extensionId: string
+
+  if (browser === 'firefox') {
+    // Firefox: Playwright doesn't expose serviceworker event reliably
+    // Solution: Read the explicit ID from manifest.json
+    // (wxt.config.ts sets browser_specific_settings.gecko.id for Firefox builds)
+    const manifestPath = path.join(extensionPath, 'manifest.json')
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+
+    extensionId =
+      manifest.browser_specific_settings?.gecko?.id ||
+      manifest.applications?.gecko?.id ||
+      ''
+
+    if (!extensionId) {
+      throw new Error(
+        'Firefox extension missing explicit ID in manifest. ' +
+          'This should be set via browser_specific_settings.gecko.id in wxt.config.ts'
+      )
+    }
+  } else {
+    // Chromium: Use service worker detection
+    const background =
+      context.serviceWorkers()[0] ??
+      (await context.waitForEvent('serviceworker', { timeout: 15_000 }))
+    extensionId = new URL(background.url()).host
+  }
 
   return {
     context,

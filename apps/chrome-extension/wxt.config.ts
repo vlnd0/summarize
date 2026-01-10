@@ -105,6 +105,17 @@ export default defineConfig({
         page: 'options/index.html',
         open_in_tab: true,
       },
+      // Firefox-specific settings: explicit extension ID for testing
+      ...(browser === 'firefox'
+        ? {
+            browser_specific_settings: {
+              gecko: {
+                id: 'summarize-test@steipete.com',
+                strict_min_version: '131.0',
+              },
+            },
+          }
+        : {}),
       // Keyboard shortcuts - Firefox supports opening sidebar via shortcuts
       ...(browser === 'firefox'
         ? {
