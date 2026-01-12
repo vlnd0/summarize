@@ -18,6 +18,7 @@
 
 - Chrome Side Panel: scope streams/state per window so other windows don’t wipe active summaries.
 - Chrome Side Panel chat: clear streaming placeholders on errors/aborts.
+- Chrome Side Panel: add inline error toast above chat composer; errors stay visible when scrolled.
 - Cache: include transcript timestamp requests in extract cache keys so timed summaries don’t reuse plain transcript content.
 - Extract-only: remove implicit 8k cap; new `--max-extract-characters`/daemon `maxExtractCharacters` allow opt-in limits; resolves transcript truncation.
 - Automation: require userScripts (no isolated-world fallback), with improved guidance and in-panel permission notice.
